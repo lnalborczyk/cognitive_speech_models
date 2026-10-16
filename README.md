@@ -1,72 +1,131 @@
 # Cognitive Speech Models
 
-**Version 0.8.1 — free GitHub Pages / WebAssembly experiment**
+An interactive, browser-based sandbox for exploring speech motor control, articulatory movement, and acoustic synthesis.
 
-Interactive speech-production research demonstrator using four **theory-inspired** controller modules (DIVA, GODIVA, GEPPETO, Task Dynamics) and a shared VocalTractLab (VTL) articulatory/acoustic engine. All articulator SVG frames and synthesized audio require **real VTL**; there is no schematic browser fallback.
+**[Launch the application](https://lnalborczyk.github.io/cognitive_speech_models/)** · [Source code](https://github.com/lnalborczyk/cognitive_speech_models) · [Report an issue](https://github.com/lnalborczyk/cognitive_speech_models/issues)
 
-## Diagnosing a failed GitHub Pages browser build (v0.8.1)
+## Overview
 
-The v0.8.0 browser test waited three minutes for `#engine-status.ready`, even when VTL initialization had failed. This release adds progress messages for WebAssembly import, C++ static constructors, `vtlInitialize`, metadata loading and the initial synthesis, with a worker startup watchdog. The smoke test fails immediately on a reported initialization/synthesis error and saves `artifacts/vtl-browser-result.json` and a screenshot. The underlying VTL WebAssembly initialization problem is **not yet established or fixed**.
+Cognitive Speech Models combines four **theory-inspired speech-production controllers** with a common [VocalTractLab (VTL)](https://www.vocaltractlab.de/) articulatory and acoustic synthesizer. Users can explore how controller settings influence articulatory trajectories, inspect VTL-generated sagittal vocal-tract animations and area functions, and listen to synthetic speech.
 
-After pushing to GitHub, open the failed Actions run → **Artifacts** → `vtl-wasm-diagnostics`. Inspect `vtl-browser-result.json`, especially `lastScreen.engineStatus`, `events` and `network`. Send that JSON to diagnose the actual cause. No local VTL installation is needed for GitHub Actions.
+The online version runs VTL in the browser using WebAssembly, with no software installation or remote synthesis server required. Computation happens locally in the user's browser.
 
-## Free online hosting: GitHub Pages
+**Scientific status:** The VTL geometry and acoustic synthesis are provided by the upstream research software. The four cognitive controllers are deliberately simplified teaching and exploratory implementations, **not validated reproductions** of DIVA, GODIVA, GEPPETO, or Task Dynamics. In particular, the current controller dynamics are not fitted to human articulatory data, and the simulated auditory error does not yet use acoustic feedback from VTL.
 
-This release makes **GitHub Pages** the primary deployment target, with **no paid server**. GitHub Pages serves HTML/JS/WASM. Visitors run the compiled VTL backend locally in their browser, on a Web Worker.
+## Try the simulator
 
-**Important:** The Emscripten port is experimental. Neither an actual VTL WebAssembly build nor deployment to a public GitHub Pages URL could be completed in this environment. The GitHub Actions pipeline will **refuse to publish** unless it can compile VTL *and* use it for audio + SVG anatomical animation in a real Chromium browser. A failed Action is expected if upstream VTL has unresolved WebAssembly compatibility problems; it does **not** imply a missing VTL installation on your Mac.
+1. Open the **[live application](https://lnalborczyk.github.io/cognitive_speech_models/)** and wait for **VocalTractLab WebAssembly** to initialize.
+2. Select a controller and an available phonetic sequence.
+3. Adjust speech rate, gestural overlap, feedback settings, motor noise, or articulatory stiffness.
+4. Select **Run simulation**, followed by **Play speech + animation** to hear the VTL waveform while viewing synchronized articulatory motion.
+5. Inspect the vocal-tract area function, articulatory trajectories, and gestural activations. Use the timeline scrubber to examine individual frames; export CSV or WAV files for further analysis.
 
-### Publish it (GitHub Free with a public repository)
+WebAssembly initialization and synthesis can take some time on slower devices. If the engine does not start, try a current desktop version of Chromium-based browsers or Firefox and report the browser version and error message in an [issue](https://github.com/lnalborczyk/cognitive_speech_models/issues). Browser compatibility has not been comprehensively validated.
 
-1. Create a **public** GitHub repository named `cognitive_speech_models` and upload/push **the contents of this folder**. Do not upload the ZIP as a single tracked file.
-2. In the repository, open **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Open **Actions → Build VTL WebAssembly and deploy GitHub Pages → Run workflow**, or push to `main` to trigger it automatically.
-4. Wait for **Compile VTL to WebAssembly** and **Verify synthesis and anatomical playback in Chromium**. Publication follows only if **both succeed**.
-5. Once deployment succeeds, visit `https://YOUR-GITHUB-USERNAME.github.io/cognitive_speech_models/`.
+### Speech sequences and consonants
 
-If it fails, download the Actions artifact **`vtl-wasm-diagnostics`**, which contains compiler logs, browser screenshot and console errors, then share its error output for debugging. Pages may need to be enabled before the workflow can deploy. GitHub Free provides Pages for public repositories, subject to GitHub's usage policies and Actions limits.
+The application currently supports vowel sequences such as `/a i a/`, `/a u a/`, and `/i a i/`. It also includes experimental stop-consonant sequences (`/a p a/`, `/a t a/`, `/a k a/`, `/p a t a k a/`) that **remain disabled when the current speaker interface cannot resolve their required targets**.
 
-Detailed instructions: **[docs/deployment.md](docs/deployment.md)**.
+This is a limitation of the application's gesture-target mapping, not an absence of consonants in VTL. The supplied `JD3.speaker` file uses **articulatory constriction names** (for example, `ll-labial-closure(a)`, `tt-alveolar-closure(a)`, `tb-velar-closure(a)`) rather than phoneme names `p`, `t`, `k`. More importantly, accurate stop synthesis needs timed closure and release gestures together with appropriate glottal control; a single static target is insufficient. Consonant production is therefore an active development priority, not a validated feature of the present release.
 
-### Test locally without paying
+## Controllers
 
-Your working native installation remains the most reliable way to experiment:
+| Controller | Implemented principle | Current simplification |
+| --- | --- | --- |
+| **DIVA-inspired** | Feedforward target tracking plus delayed auditory and somatosensory corrections | Sensory errors are computed in articulatory parameter space, not from measured/predicted acoustics |
+| **GODIVA-inspired** | Competitive activation and serial selection of planned units | Does not implement the published neural sequencing and initiation circuitry |
+| **GEPPETO-inspired** | Regularized local tracking and motor-effort costs | No finite-element tongue, muscle-force dynamics, or trajectory-wide optimization |
+| **Task Dynamics-inspired** | Overlapping gestures and damped target attractors | Uses normalized tract coordinates rather than constriction tasks and a calibrated task Jacobian |
+
+All controllers share the same simplified actuator dynamics and VTL synthesizer. This enables controlled demonstrations, but it should not be interpreted as a validated comparison of the complete theories.
+
+## How it works
+
+```text
+Phonetic sequence
+       ↓
+Gestural targets and timing
+       ↓
+DIVA / GODIVA / GEPPETO / Task Dynamics
+       ↓
+Shared normalized articulatory actuator
+       ↓
+VocalTractLab (WebAssembly, or optional local native library)
+       ├── vocal-tract contours / SVG animation
+       ├── cross-sectional area function
+       └── synthesized audio
+```
+
+The controller produces a time series of normalized articulatory parameter values. VTL converts these states into anatomical geometry and sound. **The acoustic output is currently computed after the controller trajectory, rather than being fed back into the controller during simulation.** The feedback and perturbation controls should therefore be interpreted as conceptual demonstrations.
+
+### Repository structure
+
+| Location | Responsibility |
+| --- | --- |
+| `src/cognitive/` | Independent speech-production controller modules |
+| `src/motor/` | Gestural targets, timing, and shared actuator dynamics |
+| `src/sim/` | Simulation loop and exports |
+| `src/engine/` | VTL WebAssembly worker and C API interface |
+| `src/view/` | Anatomical playback, charts, and layout |
+| `server/` | Optional local native VTL integration |
+| `scripts/` | Setup, Emscripten build, smoke tests, and launch helpers |
+| `test/` | JavaScript, Python, and integration tests |
+| `.github/workflows/pages.yml` | Automated WebAssembly build, browser test, and GitHub Pages deployment |
+| `docs/` | Implementation, validation, and deployment notes |
+
+The browser interface also includes a source-code viewer to inspect the main model modules.
+
+## Development
+
+**Requirements:** Git, a current Node.js release, and Python 3. On the public site, visitors do not need any of these tools.
+
+```bash
+git clone https://github.com/lnalborczyk/cognitive_speech_models.git
+cd cognitive_speech_models
+npm test
+```
+
+To serve an existing **compiled** WebAssembly build locally:
+
+```bash
+python3 -m http.server 5173
+# Open http://localhost:5173/
+```
+
+A fresh source checkout may not contain the compiled `web/vtl/vtl.js` and `web/vtl/vtl.wasm` files. To build them, use Emscripten and the upstream VTL speaker model according to [the WebAssembly build guide](docs/webassembly.md). For an existing native VTL installation, the optional local API can instead be launched with:
 
 ```bash
 python3 scripts/launch.py
-# open http://127.0.0.1:8000/
+# Open the address printed by the launcher
 ```
 
-To attempt the **same browser-only VTL build** on macOS:
+The GitHub Pages workflow compiles VTL, runs source tests and a Chromium synthesis/geometry check, and deploys the static application when those checks succeed. See [deployment documentation](docs/deployment.md).
 
-```bash
-SPEAKER="$HOME/.local/share/cognitive-speech/vtl/VocalTractLabBackend-dev/resources/JD3.speaker"
-bash scripts/build_browser.sh "$SPEAKER"
-python3 -m http.server 5173
-# open http://localhost:5173/
-```
+## Scientific roadmap
 
-Do not copy a `.dylib` into the static site; Pages can only use the output of an Emscripten WebAssembly compilation.
+Development priorities are **context-dependent consonant gestures**, **feedback based on acoustic and somatosensory predictions**, and **task-space motor control**, followed by benchmarking against measured articulation and speech acoustics. See the [research roadmap](docs/research-roadmap.md) for proposed experiments and acceptance criteria.
 
-## Code structure
+## Reproducibility and limitations
 
-| Component | Source files |
-|---|---|
-| DIVA, GODIVA, GEPPETO, Task Dynamics controllers | `src/cognitive/` |
-| Planning/gestural scores | `src/motor/gestures.js` |
-| Common simplified actuator dynamics | `src/motor/plant.js` |
-| Browser WebAssembly worker and C API adapter | `src/engine/` |
-| Anatomical playback and plots | `src/view/` |
-| Optional **local** native VTL server | `server/` and `scripts/launch.py` |
-| Upstream VTL WASM build | `scripts/build_vtl_wasm.py` |
-| Automated Pages deployment and browser test | `.github/workflows/pages.yml`, `scripts/check_browser_vtl.py` |
+- Numerical settings, speaker choice, controller version, and random seed should be reported when sharing results.
+- The VTL speaker and upstream VTL revision influence physical geometry and acoustics; the build records the upstream revision in `web/vtl/build.json`.
+- The shared actuator is not a biomechanical simulation of muscle forces. GEPPETO-related predictions should not be interpreted as validated muscle-level predictions.
+- Parameter-space auditory perturbations do **not** yet implement actual shifted auditory feedback, and the resulting metrics are not calibrated to human speech data.
+- Consonantal closure, phonation, release, and coarticulation need dedicated implementation and validation before consonant sequences can be interpreted phonetically.
 
-The JavaScript and Python sources are readable within the application. Compilation pulls the official [VocalTractLab backend development repository](https://github.com/TUD-STKS/VocalTractLabBackend-dev), embeds its supplied `JD3.speaker`, and records the upstream commit in `web/vtl/build.json`.
+Additional details: [model architecture](docs/models.md) · [validation](docs/validation.md) · [WebAssembly](docs/webassembly.md).
 
-## Scientific and licensing limitations
+## References and attribution
 
-The **VTL tract model, area functions, and acoustic synthesis** come from the upstream synthesizer if the browser build succeeds. The four cognitive controllers are **reduced-order educational implementations**, not published model replications. Native-versus-WebAssembly audio equivalence and Safari compatibility have **not** been established.
+- **VocalTractLab:** [Official website](https://www.vocaltractlab.de/) · [backend source code](https://github.com/TUD-STKS/VocalTractLabBackend-dev)
+- **DIVA:** [Tourville & Guenther (2011)](https://doi.org/10.1080/01690960903498424)
+- **GODIVA:** [Bohland, Bullock & Guenther (2010)](https://pmc.ncbi.nlm.nih.gov/articles/PMC2937837/)
+- **Task Dynamics:** [Saltzman & Munhall (1989)](https://doi.org/10.1207/s15326969eco0104_2)
+- **GEPPETO:** [Patri et al. (2019), overview and model framework](https://pmc.ncbi.nlm.nih.gov/articles/PMC6824204/)
+- **Project inspiration:** [CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands)
 
-VTL's backend source is GPL-licensed; distributing derived compiled modules requires meeting the applicable GPL obligations and attributing the upstream authors. The speaker model should also be checked for any separate redistribution restrictions. The workflow fetches the resources supplied by the upstream project; this does not establish additional rights.
+The Cognitive Speech Models repository is distributed under the terms in [LICENSE](LICENSE). VocalTractLab is separately developed and distributed under the GNU General Public License; redistribution of compiled VTL artifacts and speaker resources must follow their applicable terms. The model names indicate theoretical inspiration, not endorsement by the original model authors.
 
-Documentation: [model approximations](docs/models.md) · [WebAssembly details](docs/webassembly.md) · [scientific validation](docs/validation.md).
+## Contributing
+
+Bug reports, reproducible examples, tests, and contributions to the controller modules or VTL integration are welcome via [GitHub Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues) and [pull requests](https://github.com/lnalborczyk/cognitive_speech_models/pulls). Please document scientific assumptions and include tests for changes that affect simulated behavior.
