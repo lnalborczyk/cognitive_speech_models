@@ -100,12 +100,21 @@ class VocalTractLab:
         if self.rate<8000 or self.ntract<1 or self.nglottis<2:
             raise VTLError('Unexpected VTL API metadata')
         self.shapes={}
-        # Do not silently fabricate unavailable consonant targets.
-        for p in ('a','i','u','p','t','k','m'):
+        self.shape_sources={}
+        def lookup(key, source):
             values=(D*self.ntract)()
-            code=self.lib.vtlGetTractParams(p.encode('ascii'),values)
+            code=self.lib.vtlGetTractParams(source.encode('ascii'),values)
             if code==0:
-                self.shapes[p]=[self._normalize(values[i],i) for i in range(self.ntract)]
+                self.shapes[key]=[self._normalize(values[i],i) for i in range(self.ntract)]
+                self.shape_sources[key]=source
+        for phone in ('a','i','u'):
+            lookup(phone,phone)
+        for phone,base in (('p','ll-labial-closure'),('t','tt-alveolar-closure'),('k','tb-velar-closure')):
+            for vowel in ('a','i','u'):
+                lookup(f'{phone}:{vowel}',f'{base}({vowel})')
+            if f'{phone}:a' in self.shapes:
+                self.shapes[phone]=self.shapes[f'{phone}:a']
+                self.shape_sources[phone]=self.shape_sources[f'{phone}:a']
         if not all(p in self.shapes for p in ('a','i')):
             raise VTLError("Speaker must contain VTL-defined 'a' and 'i' shapes")
 
@@ -123,11 +132,11 @@ class VocalTractLab:
                 'names':self.tract['names'],'labels':self.tract['names'],
                 'min':self.tract['min'],'max':self.tract['max'],
                 'neutral':[self._normalize(v,i) for i,v in enumerate(self.tract['neutral'])],
-                'shapes':self.shapes,'rate':self.rate,'isNative':True,
+                'shapes':self.shapes,'shapeSources':self.shape_sources,'rate':self.rate,'isNative':True,
                 'units':self.tract['units'],'tubeSections':self.ntube,
                 'glottisNames':self.glottis['names']}
 
-    def synthesize(self, frames, *, include_geometry=True, geometry_fps=24):
+    def synthesize(self, frames, *, include_geometry=True, geometry_fps=24, reference_targets=None):
         if len(frames)<2 or len(frames)>1800:raise VTLError('Provide 2 to 1800 frames')
         if not isinstance(geometry_fps, int) or not 5 <= geometry_fps <= 30:
             raise VTLError('geometry_fps must be an integer between 5 and 30')
@@ -199,11 +208,27 @@ class VocalTractLab:
                         missing+=1
         finally:
             if svg_tmp is not None:svg_tmp.cleanup()
+        # Reference tube geometry from actual VTL target shapes, not interpolation.
+        # These are static targets, NOT a VTL-generated gestural score or time series.
+        references=[]
+        for item in (reference_targets or [])[:12]:
+            values=item.get('x') if isinstance(item,dict) else None
+            if not isinstance(values,list) or len(values)!=self.ntract:
+                raise VTLError('Invalid reference target')
+            pose=(D*self.ntract)(*self._denormalize(values))
+            lengths=(D*self.ntube)();areas=(D*self.ntube)();which=(I*self.ntube)()
+            incisor=D();tip=D();velum=D()
+            _check(self.lib.vtlTractToTube(pose,lengths,areas,which,ct.byref(incisor),ct.byref(tip),ct.byref(velum)),
+                'vtlTractToTube (reference)')
+            references.append({'phone':str(item.get('phone',''))[:4],
+                'context':str(item.get('context',''))[:4],
+                'source':str(item.get('source',''))[:100],
+                'lengths_cm':list(lengths),'areas_cm2':list(areas)})
         warnings=['Controller commands and actuator dynamics remain conceptual; native VTL provides geometry, area functions, and acoustic synthesis.']
         if missing:
             warnings.append(f'{missing} SVG geometry frames were unavailable or exceeded the size budget.')
         return {'kind':'vtl','sampleRate':self.rate,'audioBase64':encode_wav(list(audio),self.rate),
-                'geometry':samples,'svgs':svgs,'geometryFps':geometry_fps,
+                'geometry':samples,'references':references,'svgs':svgs,'geometryFps':geometry_fps,
                 'numberAudioSamples':naudio, 'nominalDuration':times[-1],
                 'audioDuration':naudio/self.rate,'warnings':warnings}
 

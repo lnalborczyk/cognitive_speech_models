@@ -36,12 +36,15 @@ test('browser VTL interface obtains native metadata, frames, areas, SVG and audi
  assert.equal(speaker.kind,'wasm');assert.equal(speaker.names.length,2);
  assert.deepEqual(speaker.shapes.a,[.2,.3]);
  const frames=Array.from({length:11},(_,i)=>({t:+(i*.005).toFixed(3),x:[.2+i*.03,.4]}));
- const result=backend.synthesize(frames,{geometryFps:30});
+ const result=backend.synthesize(frames,{geometryFps:30,
+   referenceTargets:[{phone:'p',context:'a',source:'ll-labial-closure(a)',x:[.2,.4]}]});
  assert.equal(result.sampleRate,44100);
  assert.ok(result.audioBase64.length>2000);
  assert.ok(result.svgs.length>=2);
  assert.equal(result.svgs.length,result.geometry.length);
  assert.deepEqual(result.geometry[0].lengths_cm,[1,2,3]);
+ assert.equal(result.references[0].source,'ll-labial-closure(a)');
+ assert.deepEqual(result.references[0].areas_cm2,[.8,1.2,1]);
  const head=Buffer.from(result.audioBase64,'base64').toString('ascii',0,4);
  assert.equal(head,'RIFF');
 });

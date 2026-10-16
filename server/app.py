@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from .vtl import VocalTractLab, VTLError
 
 ROOT=Path(__file__).resolve().parent.parent
-APP_VERSION="0.8.1"
+APP_VERSION="0.9.0"
 
 
 def get_vtl():
@@ -99,7 +99,8 @@ class Handler(SimpleHTTPRequestHandler):
             if nbytes<=0 or nbytes>3_000_000:raise ValueError('Request body exceeds 3 MB limit')
             body=json.loads(self.rfile.read(nbytes))
             result=self.engine.synthesize(body['frames'],include_geometry=bool(body.get('geometry',True)),
-                geometry_fps=body.get('geometryFps',24))
+                geometry_fps=body.get('geometryFps',24),
+                reference_targets=body.get('referenceTargets',[]))
             self.response(result)
         except (ValueError,TypeError,KeyError,VTLError) as err:
             self.response({'error':str(err)},400)

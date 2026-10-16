@@ -30,7 +30,7 @@ test('controllers can operate on arbitrary VTL parameter dimensionality',()=>{
 });
 test('absent speaker consonants produce explicit error',()=>{
  const speaker={...sp,shapes:{a:sp.shapes.a,i:sp.shapes.i,u:sp.shapes.u}};
- assert.throws(()=>simulate('td','apa',speaker),/lacks shape/);
+ assert.throws(()=>simulate('td','apa',speaker),/Missing speaker target/);
 });
 test('gestures overlap smoothly',()=>{
  const score=makeScore('aia',sp,{rate:1,overlap:.65});

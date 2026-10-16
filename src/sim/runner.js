@@ -19,11 +19,12 @@ export function simulate(model,phrase,speaker,cfg={}){
     const act=activation(score,t);
     const target=blendedTarget(score,t);
     const result=controller.step({x:plant.x.slice(),v:plant.v.slice(),target,dt,t,
-      weights:act.weight,selected:act.chosen,score});
+      weights:act.weight,selected:act.chosen,score,speaker});
     const command=result.u.map(u=>clamp(u,-75,75));
     plant.step(command,dt,()=>c.noise*(random()+random()-1)*18);
     frames.push({t:+t.toFixed(3),x:plant.x.slice(),v:plant.v.slice(),target,
-      u:command,weights:result.planning,selected:result.selected,phone:score.phones[result.selected]});
+      u:command,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],
+      kind:score.gestures[result.selected]?.kind||'vowel'});
   }
   return {model,phrase,cfg:c,score,frames,speaker:speaker.kind,
     metrics:calculateMetrics(frames)};

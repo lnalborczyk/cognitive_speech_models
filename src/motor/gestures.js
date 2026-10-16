@@ -1,4 +1,5 @@
 import { clamp } from './plant.js';
+import { resolvedShape, STOP_SHAPES } from './shape-map.js';
 export const PHRASES={
   aia:{label:'/a i a/',phones:['a','i','a']},
   aua:{label:'/a u a/',phones:['a','u','a']},
@@ -6,29 +7,45 @@ export const PHRASES={
   apa:{label:'/a p a/',phones:['a','p','a']},
   ata:{label:'/a t a/',phones:['a','t','a']},
   aka:{label:'/a k a/',phones:['a','k','a']},
+  ipi:{label:'/i p i/',phones:['i','p','i']},
+  iti:{label:'/i t i/',phones:['i','t','i']},
+  iki:{label:'/i k i/',phones:['i','k','i']},
+  upu:{label:'/u p u/',phones:['u','p','u']},
+  utu:{label:'/u t u/',phones:['u','t','u']},
+  uku:{label:'/u k u/',phones:['u','k','u']},
   pataka:{label:'/p a t a k a/',phones:['p','a','t','a','k','a']},
 };
+export function isStop(phone) {return Boolean(STOP_SHAPES[phone]);}
+function contextFor(phones,index){
+  // Choose the nearest following vowel, otherwise the nearest preceding vowel.
+  for(let i=index+1;i<phones.length;i++)if('aiu'.includes(phones[i]))return phones[i];
+  for(let i=index-1;i>=0;i--)if('aiu'.includes(phones[i]))return phones[i];
+  return 'a';
+}
 export function makeScore(phrase,speaker,{rate=1,overlap=.3}={}){
   const phones=PHRASES[phrase]?.phones;
-  if(!phones) throw new Error(`Unknown utterance '${phrase}'`);
-  const missing=phones.filter(p=>!speaker.shapes[p]);
-  if(missing.length) throw new Error(`Speaker model lacks shape(s): ${[...new Set(missing)].join(', ')}. Use a vowel-only utterance or add calibrated targets.`);
-  const duration=.29 / rate;
-  const gestures=phones.map((phone,index)=>({
-    phone,index,start:index*duration, end:(index+1)*duration,
-    center:(index+.5)*duration,
-    width:duration*(.5+overlap*.75), target:speaker.shapes[phone]
-  }));
-  return {gestures,duration:phones.length*duration,phones};
+  if(!phones)throw new Error(`Unknown utterance '${phrase}'`);
+  const unit=.29/rate;
+  const gestures=phones.map((phone,index)=>{
+    const context=contextFor(phones,index),resolved=resolvedShape(speaker,phone,context);
+    if(!resolved)throw new Error(`Missing speaker target for /${phone}/ (vowel context /${context}/). No target was synthesized or guessed.`);
+    const start=index*unit,end=(index+1)*unit;
+    return {phone,index,context,kind:isStop(phone)?'stop':'vowel',source:resolved.source,
+      start,end,center:(start+end)/2,width:unit*(.5+overlap*.75),target:resolved.target};
+  });
+  return {gestures,duration:phones.length*unit,phones};
 }
 export function activation(score,t){
   const strength=score.gestures.map(g=>{
     const dist=Math.abs(t-g.center);
-    return dist<g.width ? .5*(1+Math.cos(Math.PI*dist/g.width)):0;
+    // Raised cosine transitions, with a narrow target-hold plateau for consonant closure.
+    const extent=g.width, plateau=g.kind==='stop'?g.width*.36:0;
+    if(dist<=plateau)return 1;
+    return dist<extent ? .5*(1+Math.cos(Math.PI*(dist-plateau)/(extent-plateau))):0;
   });
   const sum=strength.reduce((a,b)=>a+b,0);
-  const weight= sum?strength.map(v=>v/sum):strength;
-  let chosen=score.gestures.reduce((best,g,i)=>Math.abs(t-g.center)<Math.abs(t-score.gestures[best].center)?i:best,0);
+  const weight=sum?strength.map(v=>v/sum):strength;
+  const chosen=score.gestures.reduce((best,g,i)=>Math.abs(t-g.center)<Math.abs(t-score.gestures[best].center)?i:best,0);
   return {strength,weight,chosen};
 }
 export function blendedTarget(score,t){

@@ -14,7 +14,18 @@ VocalTractLab is an established **research model of vocal-tract geometry and aco
 - parsing/syntax checks;
 - visual frame timestamp selection, VTL SVG frame sequence, audio and HTTP gzip payload using the compiled test-only C ABI stub.
 
-**Not tested**: a real VTL installation with actual `vtlInitialize`, `vtlSynthBlock`, `vtlTractToTube` and `vtlExportTractSvg` calls against a native library and speaker model, browser rendering/audio (browser automation was blocked by the execution environment), empirical formant accuracy, physiological articulator kinematics, or a complete feedback-control loop.
+**Not tested in this working environment:** a full live upstream JD3
+WebAssembly synthesis run using this release, closure/release accuracy against
+independent acoustic or EMA data, perceptual intelligibility, a full
+consonant-larynx coordination model, task-Jacobian calibration against VTL
+geometry, learned acoustic feedback, or faithful published cognitive
+controller implementations. GitHub Actions is expected to verify the real
+upstream VTL binary in Chromium before publishing.
+
+The stop detector in this version is deliberately described as a
+**candidate closure** based on minimum oral tube area below 0.08 cm², with
+posterior 25% of tract length excluded. This heuristic must be calibrated per
+speaker and sound category before using it as a research outcome.
 
 ## Recommended empirical benchmarks (research phase)
 

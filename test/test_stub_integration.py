@@ -23,10 +23,13 @@ class TestNativeStub(unittest.TestCase):
             try:
                 info=vtl.info()
                 self.assertEqual(len(info['names']),8)
-                self.assertEqual(set(info['shapes']),{'a','i','u'})
+                self.assertTrue({'a','i','u','p','t','k','p:a','t:i','k:u'} <= set(info['shapes']))
+                self.assertEqual(info['shapeSources']['p:a'],'ll-labial-closure(a)')
                 frames=[{'t':i*.005,'x':[i/39]*8} for i in range(40)]
-                result=vtl.synthesize(frames)
+                result=vtl.synthesize(frames,reference_targets=[{'phone':'p','context':'a',
+                    'source':info['shapeSources']['p:a'],'x':info['shapes']['p:a']}])
                 self.assertEqual(result['sampleRate'],44100)
+                self.assertEqual(result['references'][0]['phone'],'p')
                 self.assertEqual(len(result['geometry']),6)
                 self.assertEqual(len(result['svgs']),6)
                 self.assertEqual(result['geometryFps'],24)

@@ -5,7 +5,8 @@
  * It runs in a dedicated Web Worker; no Python server is required.
  */
 const LIMIT_FRAMES = 1800;
-const CHECK_PHONES = ['a', 'i', 'u', 'p', 't', 'k', 'm'];
+import {STOP_SHAPES,VOWEL_CONTEXTS} from '../motor/shape-map.js';
+const CHECK_PHONES = ['a', 'i', 'u'];
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const ensure = (code, operation) => { if (code !== 0) throw new Error(`${operation} failed (VTL ${code})`); };
 
@@ -93,13 +94,22 @@ export class WasmVTL {
       progress('reading glottis parameter metadata');
       this.glottis=this.infoFrom(this.getGlottisInfo,this.nglottis);
       progress('reading speaker phonetic shapes');
-      this.shapes={};
-      for(const phoneme of CHECK_PHONES) {
+      this.shapes={};this.shapeSources={};
+      const lookup=(key,source)=>{
         this.using([this.ntract*8],p=>{
-          if(this.getTractParams(phoneme,p)===0){
-            this.shapes[phoneme]=this.doubles(p,this.ntract).map((v,i)=>this.normalize(v,i));
+          if(this.getTractParams(source,p)===0){
+            this.shapes[key]=this.doubles(p,this.ntract).map((v,i)=>this.normalize(v,i));
+            this.shapeSources[key]=source;
           }
         });
+      };
+      for(const phoneme of CHECK_PHONES)lookup(phoneme,phoneme);
+      for(const [phoneme,base] of Object.entries(STOP_SHAPES)) {
+        for(const context of VOWEL_CONTEXTS)lookup(`${phoneme}:${context}`,`${base}(${context})`);
+        if(this.shapes[`${phoneme}:a`]){
+          this.shapes[phoneme]=this.shapes[`${phoneme}:a`];
+          this.shapeSources[phoneme]=this.shapeSources[`${phoneme}:a`];
+        }
       }
       if(!this.shapes.a||!this.shapes.i)throw new Error('Speaker lacks the required a/i target shapes');
       progress('VTL initialization finished');
@@ -119,10 +129,10 @@ export class WasmVTL {
   speaker() {
     return {kind:'wasm',engine:'VocalTractLab in browser (WebAssembly)',isNative:true,
       names:this.tract.names,labels:this.tract.names,min:this.tract.min,max:this.tract.max,
-      neutral:this.tract.neutral.map((x,i)=>this.normalize(x,i)),shapes:this.shapes,
+      neutral:this.tract.neutral.map((x,i)=>this.normalize(x,i)),shapes:this.shapes,shapeSources:this.shapeSources,
       rate:this.rate,units:this.tract.units,tubeSections:this.ntube,glottisNames:this.glottis.names};
   }
-  synthesize(frames,{geometryFps=24,geometry=true}={}) {
+  synthesize(frames,{geometryFps=24,geometry=true,referenceTargets=[]}={}) {
     if(!this.ready)throw new Error('VTL not initialized');
     if(!Array.isArray(frames)||frames.length<2||frames.length>LIMIT_FRAMES)throw new Error('Invalid trajectory length');
     if(!Number.isInteger(geometryFps)||geometryFps<5||geometryFps>30)throw new Error('Invalid frame rate');
@@ -172,8 +182,20 @@ export class WasmVTL {
           finally { try{this.m.FS.unlink(file)}catch{} }
         }
       });
+    const references=[];
+    if(!Array.isArray(referenceTargets)||referenceTargets.length>12)
+      throw new Error('Invalid VTL reference targets');
+    this.using([this.ntract*8,this.ntube*8,this.ntube*8,this.ntube*4,8,8,8],
+      (pTract,pLen,pArea,pArt,pIncisor,pTip,pVelum)=>{
+        for(const item of referenceTargets){
+          this.writeDoubles(pTract,this.denormalize(item.x));
+          ensure(this.tractToTube(pTract,pLen,pArea,pArt,pIncisor,pTip,pVelum),'vtlTractToTube (reference)');
+          references.push({phone:item.phone,context:item.context,source:item.source,
+            lengths_cm:this.doubles(pLen,this.ntube),areas_cm2:this.doubles(pArea,this.ntube)});
+        }
+      });
     return {kind:'wasm',sampleRate:this.rate,audioBase64:asBase64(wavBytes(audio,this.rate)),
-      geometry:area,svgs,geometryFps,numberAudioSamples,
+      geometry:area,references,svgs,geometryFps,numberAudioSamples,
       nominalDuration:times[n-1],audioDuration:numberAudioSamples/this.rate,
       warnings:[`VTL compiled to WebAssembly; controller and actuator dynamics remain theory-inspired and unvalidated.`,
       ...(missing?[`${missing} VTL SVG frames failed or exceeded transfer budget.`]:[])]};

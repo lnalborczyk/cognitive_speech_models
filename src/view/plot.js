@@ -61,3 +61,21 @@ export function plotArea(sample){
  const limit=Math.max(1,Math.ceil(maxFinite*1.1*2)/2);
  plotLines('area',[{data:areas,xs:xcoords,color:'#70d4cb'}],null,0,limit,{xStart:'Glottis',xEnd:'Lips',unit:'cm²'});
 }
+/** Precomputed spectrogram of the actual synthesized VTL waveform. */
+export function plotSpectrogram(id,spec,cursor=0){
+ const canvas=document.getElementById(id);if(!canvas)return;
+ const {ctx,x,y,W,H}=board(canvas,0,4,{xStart:'Onset',xEnd:spec?`${spec.duration.toFixed(2)} s`:'Time',unit:'kHz'});
+ if(!spec?.frames?.length)return;
+ const cols=spec.frames,ny=Math.min(128,cols[0].bands.length);
+ const left=chartPadding.left,top=chartPadding.top;
+ const plotW=W-left-chartPadding.right,plotH=H-top-chartPadding.bottom;
+ const cellW=plotW/cols.length+1,cellH=plotH/ny+1;
+ for(let i=0;i<cols.length;i++)for(let k=0;k<ny;k++){
+  const db=cols[i].bands[k],f=clamp((db+86)/75,0,1);
+  const r=Math.round(14+210*f*f),g=Math.round(22+155*f),b=Math.round(35+65*f);
+  ctx.fillStyle=`rgb(${r},${g},${b})`;
+  ctx.fillRect(left+i*plotW/cols.length,top+plotH-(k+1)*plotH/ny,cellW,cellH);
+ }
+ ctx.strokeStyle='#eff5ff';ctx.lineWidth=1;
+ ctx.beginPath();ctx.moveTo(x(cursor),top);ctx.lineTo(x(cursor),H-chartPadding.bottom);ctx.stroke();
+}

@@ -18,7 +18,10 @@ int vtlGetGlottisParamInfo(char*name,char*desc,char*units,double*lo,double*hi,do
  lo[1]=0;hi[1]=10000;neutral[1]=0;
  lo[2]=0;hi[2]=2;neutral[2]=.7;return 0;}
 int vtlGetTractParams(const char *name,double *v){
- if(strcmp(name,"a")&&strcmp(name,"i")&&strcmp(name,"u"))return 2;
+ if(strcmp(name,"a")&&strcmp(name,"i")&&strcmp(name,"u") &&
+    strncmp(name,"ll-labial-closure(",18) &&
+    strncmp(name,"tt-alveolar-closure(",20) &&
+    strncmp(name,"tb-velar-closure(",17))return 2;
  for(int j=0;j<8;j++)v[j] = name[0]=='a' ? -.6 : (name[0]=='i' ? 1. : .3);
  return 0;}
 int vtlTractToTube(double *v,double*len,double*area,int*art,double*inc,double*tip,double*vel){
