@@ -1,0 +1,19 @@
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
+.env
+*.so
+*.dll
+*.dylib
+*.speaker
+*.wav
+.upstream/
+web/vtl/*.wasm
+web/vtl/*.data
+web/vtl/vtl.js
+web/vtl/build.json
+.toolchains/
+
+# Built deploy artifact
+dist/

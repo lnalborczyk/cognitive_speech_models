@@ -1,0 +1,52 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {WasmVTL,wavBytes} from '../src/engine/wasm-runtime.js';
+
+// Controlled fake of the VTL C API for validating the JS memory marshalling.
+// This does NOT test VTL's actual acoustic or anatomical algorithms.
+function vtlModuleMock(){
+ const buffer=new ArrayBuffer(1024*1024),u8=new Uint8Array(buffer),i32=new Int32Array(buffer),f64=new Float64Array(buffer);
+ let next=64;const files=new Map();
+ const writeText=(p,s)=>{u8.set(new TextEncoder().encode(s+'\0'),p);};
+ const writeD=(p,x)=>f64.set(x,p/8);
+ const api={
+  vtlInitialize:()=>0,vtlClose:()=>0,
+  vtlGetConstants:(a,b,c,d,e,f)=>{i32[a/4]=44100;i32[b/4]=3;i32[c/4]=2;i32[d/4]=2;i32[e/4]=220;f64[f/8]=200;return 0;},
+  vtlGetTractParamInfo:(a,b,c,d,e,f)=>{writeText(a,'JX\tTBX');writeText(b,'jaw\ttongue');writeText(c,'cm\tcm');writeD(d,[0,0]);writeD(e,[10,10]);writeD(f,[5,5]);return 0;},
+  vtlGetGlottisParamInfo:(a,b,c,d,e,f)=>{writeText(a,'f0\tpressure');writeText(b,'f0\tpressure');writeText(c,'Hz\tPa');writeD(d,[60,0]);writeD(e,[450,10000]);writeD(f,[120,0]);return 0;},
+  vtlGetTractParams:(name,p)=>{if(!['a','i'].includes(name))return 2;writeD(p,name==='a'?[2,3]:[7,8]);return 0;},
+  vtlSynthBlock:(pTract,pGlott,n,step,pAudio)=>{for(let i=0;i<(n-1)*step;i++)f64[pAudio/8+i]=0.1*Math.sin(i*.01);return 0;},
+  vtlTractToTube:(p,l,a,art,inc,tip,vel)=>{writeD(l,[1,2,3]);writeD(a,[.8,1.2,1]);i32.set([1,2,3],art/4);writeD(inc,[5]);writeD(tip,[0]);writeD(vel,[.1]);return 0;},
+  vtlExportTractSvg:(p,path)=>{files.set(path,new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'));return 0;},
+ };
+ return {
+  HEAPU8:u8,HEAP32:i32,HEAPF64:f64,
+  _malloc(bytes){const p=(next+7)&~7;next=p+bytes;if(next>buffer.byteLength)throw Error('mock OOM');return p;},
+  _free(){}, cwrap(name){assert.ok(name in api,`Missing symbol ${name}`);return api[name];},
+  FS:{readFile(path){if(!files.has(path))throw Error('file missing');return files.get(path)},unlink(path){files.delete(path)}},
+ };
+}
+test('WAV encoding produces correct mono PCM header',()=>{
+ const bytes=wavBytes([0,1,-1],44100);const view=new DataView(bytes.buffer);
+ assert.equal(bytes.length,50);assert.equal(view.getUint32(24,true),44100);
+ assert.equal(view.getInt16(46,true),32767);assert.equal(view.getInt16(48,true),-32767);
+});
+test('browser VTL interface obtains native metadata, frames, areas, SVG and audio',()=>{
+ const backend=new WasmVTL(vtlModuleMock());const speaker=backend.init();
+ assert.equal(speaker.kind,'wasm');assert.equal(speaker.names.length,2);
+ assert.deepEqual(speaker.shapes.a,[.2,.3]);
+ const frames=Array.from({length:11},(_,i)=>({t:+(i*.005).toFixed(3),x:[.2+i*.03,.4]}));
+ const result=backend.synthesize(frames,{geometryFps:30});
+ assert.equal(result.sampleRate,44100);
+ assert.ok(result.audioBase64.length>2000);
+ assert.ok(result.svgs.length>=2);
+ assert.equal(result.svgs.length,result.geometry.length);
+ assert.deepEqual(result.geometry[0].lengths_cm,[1,2,3]);
+ const head=Buffer.from(result.audioBase64,'base64').toString('ascii',0,4);
+ assert.equal(head,'RIFF');
+});
+test('rejects invalid trajectories instead of accessing arbitrary Wasm memory',()=>{
+ const b=new WasmVTL(vtlModuleMock());b.init();
+ assert.throws(()=>b.synthesize([{t:0,x:[NaN,2]},{t:.005,x:[1,2]}]),/finite/);
+ assert.throws(()=>b.synthesize([{t:0,x:[0,1]},{t:0,x:[1,2]}]),/regularly sampled/);
+});

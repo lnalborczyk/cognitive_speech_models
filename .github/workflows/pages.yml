@@ -1,0 +1,102 @@
+name: Build VTL WebAssembly and deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      diagnostic:
+        description: 'Build with additional WebAssembly memory checks (slower)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-vtl
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Compile, initialize, and test real VTL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run source and interface tests
+        run: npm test
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 6.0.12
+      - name: Checkout upstream VocalTractLab backend
+        run: |
+          mkdir -p .upstream artifacts
+          git clone --depth 1 https://github.com/TUD-STKS/VocalTractLabBackend-dev.git .upstream/VocalTractLabBackend-dev
+          git -C .upstream/VocalTractLabBackend-dev rev-parse HEAD | tee artifacts/upstream-revision.txt
+          test -s .upstream/VocalTractLabBackend-dev/resources/JD3.speaker
+      - name: Compile VTL to WebAssembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAGS=()
+          if [[ '${{ inputs.diagnostic }}' == 'true' ]]; then
+            FLAGS+=(--diagnostic)
+          fi
+          python3 scripts/build_vtl_wasm.py \
+            --source .upstream/VocalTractLabBackend-dev \
+            --speaker .upstream/VocalTractLabBackend-dev/resources/JD3.speaker \
+            "${FLAGS[@]}" 2>&1 | tee artifacts/emscripten-build.log
+          python3 scripts/verify_static_assets.py
+      - name: Install real-browser smoke-test tooling
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Verify synthesis and anatomical playback in Chromium
+        run: python3 scripts/check_browser_vtl.py --artifacts artifacts --timeout 180000
+      - name: Build GitHub Pages release
+        run: |
+          python3 scripts/prepare_static_site.py
+          python3 scripts/verify_pages_release.py
+      - name: Upload diagnostics (including when the build fails)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtl-wasm-diagnostics
+          path: |
+            artifacts/
+            web/vtl/build.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload verified static site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    name: Publish interactive application
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy verified site
+        id: deployment
+        uses: actions/deploy-pages@v4
