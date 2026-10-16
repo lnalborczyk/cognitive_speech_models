@@ -14,7 +14,7 @@ The public application runs entirely in the browser using WebAssembly. Visitors 
 2. Choose a model and phonetic sequence; vowel sequences and context-dependent `/p/`, `/t/` and `/k/` sequences are available with the bundled JD3 speaker.
 3. Change speech rate, gestural overlap, feedback gain/delay, an auditory F1 feedback shift, motor noise or articulator stiffness.
 4. Run the simulation, then select **Play speech + animation**. The anatomical SVG frames and acoustic waveform are produced by the same VTL trajectory.
-5. Examine articulatory trajectories, VTL tube area, online transfer-function resonance estimates (F1–F3), the waveform spectrogram, and possible consonant closures. Use the time scrubber or export WAV/CSV data.
+5. Examine articulatory trajectories, VTL tube area, online transfer-function resonance estimates (F1–F3), the waveform spectrogram, and reference-place-specific consonant closures. Use the time scrubber or export WAV/CSV data.
 
 **Browser vs local native mode:** In the public WebAssembly version, the controller receives measured VTL acoustic and constriction variables **during trajectory generation**. The optional Python/native VTL route currently uses open-loop synthesis after a proprioceptive-only motor simulation. Auditory feedback/perturbation controls are disabled in that mode.
 
@@ -108,3 +108,41 @@ This project is an **exploratory platform**, not a validated generative model of
 The repository is licensed as stated in [LICENSE](LICENSE). The VocalTractLab backend is separately licensed under the GPL; compiled distributions must comply with the upstream terms and those applicable to the speaker resources.
 
 Contributions and reproducible bug reports are welcome through [GitHub Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues) and pull requests. Please document scientific assumptions and add tests when changing model behavior.
+
+## Place-specific closure analysis (v1.1)
+
+Stop-consonant diagnostics use the VTL speaker's context-dependent reference
+geometry to find the intended constriction place. The synthesis engine samples
+tube areas at approximately 100 Hz independently of the (typically 30 fps)
+SVG anatomy. A geometrical closure is reported only when the appropriate site
+remains at or below 0.08 cm² for at least 25 ms. Release is estimated from
+the subsequent reopening. These thresholds are exploratory and are **not**
+validated phoneme classification or perceptual speech accuracy.
+
+The online Task Dynamics, DIVA, GODIVA and GEPPETO-OFC modules remain
+reduced-order, theory-inspired controllers. The VTL synthesis and geometry
+are the established research software components, not evidence that the
+controllers replicate their published implementations.
+
+## Controlled auditory-feedback perturbation demonstration
+
+The sidebar's **Compare baseline vs F1 shift** control runs the chosen model
+twice with identical parameters and random seed. The only change is a step
+shift applied to the simulated *perceived* F1 from the selected onset time.
+The display reports normalized articulatory trajectory divergence and the
+change in the tract-predicted F1. A zero or small difference is possible,
+including when the controller does not use acoustic feedback. The experiment
+is available only in browser WebAssembly mode and is a **model sensitivity
+check**, not an experimentally calibrated estimate of human adaptation.
+
+## Stop closure diagnostics
+
+The VTL speaker's context-dependent closure reference supplies an anatomical
+site for each /p/, /t/ or /k/. Additional VTL tube snapshots are calculated
+at approximately 100 Hz (independent of 30-fps SVG animation). A successful
+geometrical closure requires an oral area no larger than 0.08 cm² at that
+reference place for at least 25 ms. The application also reports the first
+subsequent reopening. A closure somewhere else in the tract is **not** counted
+as a successful stop at the intended place. Thresholds are exploratory, and
+closure/release is not equivalent to validated stop production, voicing,
+burst timing, or phoneme perception.

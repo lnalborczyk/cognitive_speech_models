@@ -52,6 +52,8 @@ test('browser VTL interface obtains native metadata, frames, areas, SVG and audi
  assert.equal(result.sampleRate,44100);
  assert.ok(result.audioBase64.length>2000);
  assert.ok(result.svgs.length>=2);
+ assert.ok(result.diagnosticGeometry.length>result.geometry.length);
+ assert.deepEqual(result.diagnosticGeometry[0].lengths_cm,[1,2,3]);
  assert.equal(result.svgs.length,result.geometry.length);
  assert.deepEqual(result.geometry[0].lengths_cm,[1,2,3]);
  assert.equal(result.references[0].source,'ll-labial-closure(a)');

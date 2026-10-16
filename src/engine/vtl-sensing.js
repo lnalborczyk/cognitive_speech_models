@@ -88,6 +88,12 @@ export class VTLSensoryObserver {
           sectionIndex:place.index,jacobian:gradient};
       }
     }
+    // A fully occluded oral tract has no reliable radiated vowel formants;
+    // do not feed numerical transfer-function peaks back as vowel targets.
+    if(stop && constriction?.area <= .08){
+      actual.fill(null);targetFormants.fill(null);
+      for(const row of jacobian)row.fill(0);
+    }
     return {auditory:actual,auditoryTarget:targetFormants,auditoryJacobian:jacobian,constriction,
       source:'VTL vtlGetTransferFunction + vtlTractToTube',phone,context};
   }
@@ -96,6 +102,6 @@ export class VTLSensoryObserver {
       this.cached=this.measure(x,target,phone,context);
       this.lastPhone=phone;
     }
-    return this.cached;
+    return {...this.cached,time_s:step*.005};
   }
 }

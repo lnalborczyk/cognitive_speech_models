@@ -16,7 +16,8 @@ export function feedbackForce(sensory, cfg={}, n=0) {
       for(let k=0;k<3;k++) {
         if(!Number.isFinite(auditory[k])||!Number.isFinite(target[k]))continue;
         // Shifts are added to *heard* F1; they never change the VTL synthesizer.
-        const shift=k===0?Number(cfg.perturbation||0):0;
+        const onset=Number(cfg.perturbationOnsetMs??0)/1000;
+        const shift=k===0&&(sensory.time_s??0)>=onset?Number(cfg.perturbation||0):0;
         const error=(auditory[k]+shift-target[k])/FORMANT_SCALES[k];
         for(let j=0;j<n;j++) {
           const derivative=(J[k]?.[j]||0)/FORMANT_SCALES[k];

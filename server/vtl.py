@@ -210,6 +210,19 @@ class VocalTractLab:
             if svg_tmp is not None:svg_tmp.cleanup()
         # Reference tube geometry from actual VTL target shapes, not interpolation.
         # These are static targets, NOT a VTL-generated gestural score or time series.
+        diagnostic_geometry=[]
+        # Tube-only snapshots at ~100 Hz for stop timing, independent of SVG fps.
+        if reference_targets:
+            count=min(n,500,math.ceil(times[-1]*100)+1)
+            sample_indices=sorted(set(round(i*(n-1)/max(1,count-1)) for i in range(count)))
+            for idx in sample_indices:
+                pose=(D*self.ntract)(*poses[idx]);length=(D*self.ntube)();area=(D*self.ntube)()
+                which=(I*self.ntube)();incisor=D();tip=D();velum=D()
+                _check(self.lib.vtlTractToTube(pose,length,area,which,
+                    ct.byref(incisor),ct.byref(tip),ct.byref(velum)),
+                    'vtlTractToTube (diagnostics)')
+                diagnostic_geometry.append({'t':times[idx],
+                    'lengths_cm':list(length),'areas_cm2':list(area)})
         references=[]
         for item in (reference_targets or [])[:12]:
             values=item.get('x') if isinstance(item,dict) else None
@@ -228,7 +241,7 @@ class VocalTractLab:
         if missing:
             warnings.append(f'{missing} SVG geometry frames were unavailable or exceeded the size budget.')
         return {'kind':'vtl','sampleRate':self.rate,'audioBase64':encode_wav(list(audio),self.rate),
-                'geometry':samples,'references':references,'svgs':svgs,'geometryFps':geometry_fps,
+                'geometry':samples,'diagnosticGeometry':diagnostic_geometry,'references':references,'svgs':svgs,'geometryFps':geometry_fps,
                 'numberAudioSamples':naudio, 'nominalDuration':times[-1],
                 'audioDuration':naudio/self.rate,'warnings':warnings}
 

@@ -89,7 +89,7 @@ def main()->int:
         print('VTL absent — simulation disabled until VTL is connected.')
         print('Run python3 scripts/launch.py --install-vtl to install/build it.')
     os.environ['PORT']=str(args.port)
-    url=f'http://127.0.0.1:{args.port}/?release=1.0.0'
+    url=f'http://127.0.0.1:{args.port}/?release=1.1.0'
     if not args.no_browser:
         # Wait until localhost server has started accepting connections.
         from threading import Timer

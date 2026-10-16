@@ -30,3 +30,12 @@ These tests are **not** validation against published model simulations or human 
 5. Compare each controller against its published original implementation before drawing theoretical conclusions. In particular, no result here should be labelled a validated GEPPETO-OFC simulation.
 
 Further details: [controller API](models.md), [research roadmap](research-roadmap.md), and [upstream VocalTractLab API](https://github.com/TUD-STKS/VocalTractLabBackend-dev).
+
+## v1.1 diagnostic criteria
+
+Place-specific closure metrics use context-dependent VTL target geometry,
+100-Hz tube sampling, an oral-area threshold of 0.08 cm², and a required hold
+of at least 25 ms. They do not quantify perceptual phoneme identity. Results
+should be reported as geometrical candidate closures, not empirical accuracy.
+The auditory perturbation A/B experiment compares two deterministic runs
+under the same controller and random seed and is not fitted to participant data.

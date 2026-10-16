@@ -20,3 +20,6 @@
 #scrub{display:block;margin:10px 0 4px}
 @media (max-width:970px){.layout{grid-template-columns:minmax(210px,250px) minmax(0,1fr)}.rightcol{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:690px){.layout{display:block}.rightcol{display:block}.controls,.maincontent{display:flex}.rightcol>.panel{margin-bottom:12px}.native-geometry{height:250px}}
+
+/* Keep supplementary experiments inside the narrow sidebar. */
+.rightcol canvas{display:block;max-width:100%;width:100%;height:auto;box-sizing:border-box;border-radius:6px;margin:.6rem 0}

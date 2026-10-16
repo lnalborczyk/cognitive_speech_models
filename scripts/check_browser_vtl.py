@@ -116,8 +116,25 @@ def main():
                     raise AssertionError('No rendered VTL SVG anatomy')
                 if not any('vtl.wasm' in item['url'] and item['status']==200 for item in log['network']):
                     raise AssertionError('Compiled VTL WASM binary was not successfully fetched')
+                # Integration gate for the actual JD3 consonant target and
+                # high-resolution VTL tube diagnostics (not phoneme accuracy).
+                page.locator('#phrase').select_option('apa')
+                page.wait_for_function("""() => {
+                  const value=document.querySelector('#closure-report')?.textContent||'';
+                  const wav=document.querySelector('#wav');
+                  const status=document.querySelector('#audio-status')?.textContent||'';
+                  return value.includes('/p/ at ') || status.startsWith('Error:');
+                }""",timeout=args.timeout)
+                report=page.locator('#closure-report').inner_text()
+                status=page.locator('#audio-status').inner_text()
+                if status.startswith('Error:') or '/p/ at ' not in report:
+                    raise AssertionError('Consonant geometry diagnostics failed: '+status+'; '+report)
+                if 'minimum n/a' in report:
+                    raise AssertionError('No VTL tube aperture reported for /p/: '+report)
+                log['closureDiagnostic'] = report
                 log['result'] = 'PASS'
                 print('Real VTL WebAssembly browser test PASSED:', state)
+                print('Reference-place stop diagnostic:', report)
             finally:
                 try:
                     log['lastScreen'] = snapshot(page)

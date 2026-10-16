@@ -183,6 +183,23 @@ export class WasmVTL {
           finally { try{this.m.FS.unlink(file)}catch{} }
         }
       });
+    // Dense tube-only snapshots (100 Hz) for consonant closure and release
+    // diagnostics. Anatomical SVG frames remain independently sampled at 30 Hz.
+    // This avoids evaluating a 25-ms hold from 33-ms-spaced animation frames.
+    const diagnosticGeometry=[];
+    if(referenceTargets?.length){
+      const count=Math.min(n,500,Math.ceil(times[n-1]*100)+1);
+      const sampleIndices=[...new Set(Array.from({length:count},(_,i)=>Math.round(i*(n-1)/Math.max(1,count-1))))];
+      this.using([this.ntract*8,this.ntube*8,this.ntube*8,this.ntube*4,8,8,8],
+        (pTract,pLen,pArea,pArt,pIncisor,pTip,pVelum)=>{
+          for(const idx of sampleIndices){
+            this.writeDoubles(pTract,poses[idx]);
+            ensure(this.tractToTube(pTract,pLen,pArea,pArt,pIncisor,pTip,pVelum),'vtlTractToTube (diagnostics)');
+            diagnosticGeometry.push({t:times[idx],lengths_cm:this.doubles(pLen,this.ntube),
+              areas_cm2:this.doubles(pArea,this.ntube)});
+          }
+        });
+    }
     const references=[];
     if(!Array.isArray(referenceTargets)||referenceTargets.length>12)
       throw new Error('Invalid VTL reference targets');
@@ -196,7 +213,7 @@ export class WasmVTL {
         }
       });
     return {kind:'wasm',sampleRate:this.rate,audioBase64:asBase64(wavBytes(audio,this.rate)),
-      geometry:area,references,svgs,geometryFps,numberAudioSamples,
+      geometry:area,diagnosticGeometry,references,svgs,geometryFps,numberAudioSamples,
       nominalDuration:times[n-1],audioDuration:numberAudioSamples/this.rate,
       warnings:[`VTL compiled to WebAssembly; controller and actuator dynamics remain theory-inspired and unvalidated.`,
       ...(missing?[`${missing} VTL SVG frames failed or exceeded transfer budget.`]:[])]};

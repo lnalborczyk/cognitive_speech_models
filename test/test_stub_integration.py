@@ -31,6 +31,7 @@ class TestNativeStub(unittest.TestCase):
                 self.assertEqual(result['sampleRate'],44100)
                 self.assertEqual(result['references'][0]['phone'],'p')
                 self.assertEqual(len(result['geometry']),6)
+                self.assertGreater(len(result['diagnosticGeometry']),len(result['geometry']))
                 self.assertEqual(len(result['svgs']),6)
                 self.assertEqual(result['geometryFps'],24)
                 self.assertAlmostEqual(result['svgs'][-1]['t'],frames[-1]['t'])

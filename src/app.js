@@ -4,12 +4,13 @@ import {CONTROLLERS} from './cognitive/registry.js';
 import {plotLines,plotArea,channels} from './view/plot.js';
 import {NativeTractAnimation,nearestTimestampIndex} from './view/native-animation.js';
 import {BrowserVTLClient} from './engine/wasm-client.js';
-import {decodeWavBase64,spectrogram,constrictionSeries,assessStops,oralMinimum} from './sim/diagnostics.js';
+import {decodeWavBase64,spectrogram} from './sim/diagnostics.js';
 import {plotSpectrogram} from './view/plot.js';
+import {analyzeStops,placeSpecificSeries,CLOSURE_THRESHOLD_CM2} from './sim/closure-analysis.js';
 
 const $=id=>document.getElementById(id);
-const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
-const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,.8,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
+const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
+const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,.8,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let native=null,wasm=null,speaker=null,simulation=null,nativeResult=null;
 let acousticSpec=null,constrictionData=[],benchmarkRows=[];
 const wasmClient=new BrowserVTLClient({onProgress: phase => {
@@ -34,7 +35,7 @@ function requireVTL(){
 }
 function setConnected(ready){
  for(const id of specs.map(([key])=>key))$(id).disabled=!ready;
- for(const id of ['run','play','compare','compare-vtl','bench-csv','all-csv','download','model','phrase','geometry-fps','scrub'])$(id).disabled=!ready;
+ for(const id of ['run','play','compare','compare-vtl','bench-csv','all-csv','download','model','phrase','geometry-fps','scrub','experiment'])$(id).disabled=!ready;
  $('engine').disabled=!ready;
  $('audio').disabled=!ready||!nativeResult;
  $('wav').disabled=!ready||!nativeResult;
@@ -58,7 +59,7 @@ async function connect(){
      const response=await fetch('/api/status',{cache:'no-store'});
      if(!response.ok)throw Error(`No VTL API on this web origin (HTTP ${response.status})`);
      const status=await response.json();
-     if(status.appVersion!=='1.0.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
+     if(status.appVersion!=='1.1.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
      if(!status.available)throw Error(status.error||'Native VTL is unavailable');
      const res=await fetch('/api/speaker',{cache:'no-store'});
      if(!res.ok)throw Error(`Native VTL speaker unavailable (HTTP ${res.status})`);
@@ -164,6 +165,45 @@ async function compare(){
  }
  metricsTable(sims);return sims;
 }
+// Controlled within-controller perturbation experiment. Both trajectories use
+// identical targets, settings and RNG seed, changing perceived F1 only.
+async function perturbationExperiment(){
+  if(speaker?.kind!=='wasm')throw Error('Requires the browser VTL sensory observer');
+  const button=$('experiment'),cfg=config(),phrase=$('phrase').value,model=$('model').value;
+  const onset=cfg.perturbationOnsetMs/1000;
+  const shift=cfg.perturbation===0?150:cfg.perturbation;
+  button.disabled=true;
+  try{
+    $('experiment-report').textContent='Calculating baseline VTL sensory control…';
+    const baseline=await wasmClient.simulateOnly(model,phrase,{...cfg,perturbation:0});
+    $('experiment-report').textContent='Calculating shifted-auditory-feedback condition…';
+    const altered=await wasmClient.simulateOnly(model,phrase,{...cfg,perturbation:shift});
+    const a=baseline.frames,b=altered.frames;
+    if(a.length!==b.length)throw Error('Paired trajectories have different sampling grids');
+    let motorError=0,nMotor=0;
+    const change=[],obsChange=[];
+    for(let i=0;i<a.length;i++){
+      const f=a[i],g=b[i];
+      let diff=0;
+      for(let j=0;j<f.x.length;j++){
+        const d=g.x[j]-f.x[j];diff+=d*d;
+        if(f.t>=onset){motorError+=d*d;nMotor++;}
+      }
+      change.push(Math.sqrt(diff/f.x.length));
+      const f1a=f.sensory?.auditory?.[0],f1b=g.sensory?.auditory?.[0];
+      obsChange.push(Number.isFinite(f1a)&&Number.isFinite(f1b)?f1b-f1a:NaN);
+    }
+    const rms=nMotor?Math.sqrt(motorError/nMotor):0;
+    const samples=obsChange.filter((v,i)=>Number.isFinite(v)&&a[i].t>=onset);
+    const meanHz=samples.length?samples.reduce((sum,v)=>sum+v,0)/samples.length:null;
+    const max=Math.max(.001,...change);
+    plotLines('experiment-plot',[{data:change,color:'#74bcd4'},
+      {data:[0,0],xs:[onset/Math.max(.001,duration()),onset/Math.max(.001,duration())],color:'#aaa'}],null,0,max*1.15,
+      {xStart:'Start',xEnd:baseline.frames.at(-1).t.toFixed(2)+' s'});
+    $('experiment-report').textContent=`${model}: ${shift>0?'+':''}${shift} Hz shift in perceived F1 starting at ${onset.toFixed(2)} s. Paired normalized articulatory RMS divergence: ${rms.toFixed(5)}; mean change in VTL tract-predicted F1: ${meanHz===null?'not estimable':meanHz.toFixed(1)+' Hz'}. No difference is expected for controllers without effective auditory feedback. A shift in perceived F1 is not a change in emitted audio and these results are not calibrated to human compensation.`;
+  }catch(e){$('experiment-report').textContent='Perturbation experiment failed: '+e.message;}
+  finally{button.disabled=false;}
+}
 async function comparePhysical(){
  requireVTL();
  const button=$('compare-vtl');button.disabled=true;benchmarkRows=[];
@@ -179,21 +219,24 @@ async function comparePhysical(){
      s=simulate(name,$('phrase').value,speaker,cfg);
      const frames=s.frames.map(f=>({t:f.t,x:f.x}));
      const res=await fetch('/api/synthesize',{method:'POST',headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({frames,geometry:false,geometryFps:16})});
+       body:JSON.stringify({frames,geometry:false,geometryFps:16,
+          referenceTargets:s.score.gestures.filter(g=>g.kind==='stop').map(g=>({phone:g.phone,context:g.context,source:g.source,x:g.target}))})});
      response=await res.json();if(!res.ok)throw Error(response.error||'VTL synthesis failed');
    }
-   const stops=assessStops(s,response.geometry||[]);
-   const candidates=stops.filter(x=>x.candidateClosure===true).length;
-   const areas=constrictionSeries(response.geometry||[]).map(x=>x.minArea_cm2).filter(Number.isFinite);
-   const wav=decodeWavBase64(response.audioBase64);
-   let square=0;for(const value of wav.samples)square+=value*value;
-   benchmarkRows.push({model:name,trackingRms:s.metrics.normalizedTrackingRMS,effort:s.metrics.effortMean,
-     minOralArea:areas.length?Math.min(...areas):null,closures:candidates,stops:stops.length,
-     audioRms:Math.sqrt(square/wav.samples.length)});
+    const stops=analyzeStops(s,response.diagnosticGeometry||response.geometry||[],response.references||[]);
+    const closures=stops.filter(x=>x.verified).length;
+    const areas=stops.map(x=>x.minimumArea_cm2).filter(Number.isFinite);
+    const holds=stops.map(x=>x.closureDuration_s).filter(Number.isFinite);
+    const wav=decodeWavBase64(response.audioBase64);
+    let square=0;for(const value of wav.samples)square+=value*value;
+    benchmarkRows.push({model:name,trackingRms:s.metrics.normalizedTrackingRMS,effort:s.metrics.effortMean,
+      minOralArea:areas.length?Math.min(...areas):null,closures,stops:stops.length,
+      maxClosureHold_s:holds.length?Math.max(...holds):null,
+      audioRms:Math.sqrt(square/wav.samples.length)});
   }
-  let html='<table><thead><tr><th>Controller</th><th>Target RMS</th><th>Min oral area (cm²)</th><th>Stop closures</th><th>Audio RMS</th></tr></thead><tbody>';
-  for(const r of benchmarkRows)html+=`<tr><td>${r.model}</td><td>${r.trackingRms.toFixed(3)}</td><td>${r.minOralArea?.toFixed(3)??'n/a'}</td><td>${r.stops?r.closures+'/'+r.stops:'—'}</td><td>${r.audioRms.toFixed(4)}</td></tr>`;
-  $('physical-report').innerHTML=html+'</tbody></table><p class="mini">All four used the same speaker, score, plant, and noise seed. Candidate closures are threshold-based VTL area measurements, not validated phoneme detections. These are demonstrations, not human-data fits.</p>';
+  let html='<table><thead><tr><th>Controller</th><th>Target RMS</th><th>Min oral area (cm²)</th><th>Sustained closures</th><th>Longest hold (ms)</th><th>Audio RMS</th></tr></thead><tbody>';
+  for(const r of benchmarkRows)html+=`<tr><td>${r.model}</td><td>${r.trackingRms.toFixed(3)}</td><td>${r.minOralArea?.toFixed(3)??'n/a'}</td><td>${r.stops?r.closures+'/'+r.stops:'—'}</td><td>${r.maxClosureHold_s===null?'—':(1000*r.maxClosureHold_s).toFixed(0)}</td><td>${r.audioRms.toFixed(4)}</td></tr>`;
+  $('physical-report').innerHTML=html+'</tbody></table><p class="mini">All four used the same speaker, score, plant, and noise seed. Closures require ≥25 ms at ≤0.08 cm² at the VTL reference-derived place, not simply a narrow area elsewhere. These are geometrical criteria, not validated phoneme detections. These are demonstrations, not human-data fits.</p>';
  }catch(error){$('physical-report').textContent='VTL benchmark failed: '+error.message;}
  finally{button.disabled=false;}
 }
@@ -227,12 +270,15 @@ function draw(t){
    })),pct,0,Math.ceil(maxHz/500)*500,{xStart:'Onset',xEnd:duration().toFixed(2)+' s',unit:'Hz'});
  }
 
- if(constrictionData.length){
-   const yMax=Math.max(.25,...constrictionData.map(s=>Number.isFinite(s.minArea_cm2)?s.minArea_cm2:0));
-   plotLines('constriction',[{data:constrictionData.map(s=>s.minArea_cm2),
-     xs:constrictionData.map(s=>s.t/duration()),color:'#f8b777'}],pct,0,Math.ceil(yMax*4)/4,
-     {xStart:'Onset',xEnd:duration().toFixed(2)+' s',unit:'cm²'});
- }else plotLines('constriction',[],null,0,1,{xStart:'Onset',xEnd:duration().toFixed(2)+' s'});
+  if(constrictionData.length){
+    const maxArea=Math.max(.3,...constrictionData.flatMap(entry=>entry.series.map(z=>Number.isFinite(z.area_cm2)?z.area_cm2:0)));
+    plotLines('constriction',[
+      ...constrictionData.map((entry,i)=>({data:entry.series.map(s=>s.area_cm2??NaN),
+        xs:entry.series.map(s=>s.t/Math.max(.001,duration())),
+        color:['#e3a65b','#71b6da','#b68de0'][i%3]})),
+      {data:[CLOSURE_THRESHOLD_CM2,CLOSURE_THRESHOLD_CM2],xs:[0,1],color:'#838c96'},
+    ],pct,0,Math.ceil(maxArea*4)/4,{xStart:'Onset',xEnd:duration().toFixed(2)+' s',unit:'cm²'});
+  }else plotLines('constriction',[],null,0,1,{xStart:'Onset',xEnd:duration().toFixed(2)+' s'});
 }
 function renderNames(){
  const selected=channels(speaker.names,Math.min(6,speaker.names.length));
@@ -272,14 +318,13 @@ async function run(){
    catch(err){acousticSpec=null;console.warn('VTL spectrogram unavailable:',err);}
    constrictionData=constrictionSeries(response.geometry||[]);
    const stops=assessStops(simulation,response.geometry||[]);
-   const report=stops.map(stop=>{
-     const ref=(response.references||[]).find(r=>r.phone===stop.phone&&r.context===stop.context);
-     const minimum=ref?oralMinimum(ref):null;
-     const actual=stop.minOralArea_cm2===null?'not sampled':stop.minOralArea_cm2.toFixed(3)+' cm²';
-     const target=minimum?minimum.area_cm2.toFixed(3)+' cm²':'n/a';
-     return `/${stop.phone}/ (${stop.source}): min simulated ${actual}; VTL target ${target}; `+
-       (stop.candidateClosure===null?'insufficient samples':stop.candidateClosure?'candidate closure':'no closure at threshold');
-   });
+    const report=stops.map(stop=>{
+      const place=stop.sitePosition===null?'unknown':`${(100*stop.sitePosition).toFixed(0)}% of tract`;
+      const min=stop.minimumArea_cm2===null?'n/a':stop.minimumArea_cm2.toFixed(3)+' cm²';
+      const hold=stop.closureDuration_s===null?'n/a':Math.round(1000*stop.closureDuration_s)+' ms';
+      const release=stop.releaseTime_s===null?'not detected':stop.releaseTime_s.toFixed(3)+' s';
+      return `/${stop.phone}/ at ${place}: minimum ${min}; longest hold ${hold}; release ${release}; ${stop.status}`;
+    });
    $('closure-report').textContent=report.length?report.join(' · '):'Vowel-only sequence; no stop closure targets.';
    $('audio').disabled=false;$('wav').disabled=false;
    $('geometry-label').textContent=`${response.svgs.length} VTL anatomical frames (${response.geometryFps} fps target)`;
@@ -337,7 +382,8 @@ $('geometry-fps').addEventListener('change',()=>{if(speaker)void run()});
 $('engine').addEventListener('change',()=>{const e=$('engine').value;speaker=e==='wasm'?wasm:native;setEngineDetails();void run()});
 $('compare').onclick=()=>{void compare().catch(e=>message(e.message))};
 $('compare-vtl').onclick=()=>{void comparePhysical()};
-$('bench-csv').onclick=()=>{if(benchmarkRows.length){const cols=['model','trackingRms','effort','minOralArea','closures','stops','audioRms'];fileDownload('vtl-controller-benchmark.csv',[cols.join(','),...benchmarkRows.map(r=>cols.map(k=>r[k]??'').join(','))].join('\n'),'text/csv')}};
+$('experiment').onclick=()=>{void perturbationExperiment()};
+$('bench-csv').onclick=()=>{if(benchmarkRows.length){const cols=['model','trackingRms','effort','minOralArea','closures','stops','maxClosureHold_s','audioRms'];fileDownload('vtl-controller-benchmark.csv',[cols.join(','),...benchmarkRows.map(r=>cols.map(k=>r[k]??'').join(','))].join('\n'),'text/csv')}};
 $('download').onclick=()=>{if(simulation&&speaker)fileDownload(`cognitive_speech_models-${simulation.model}.csv`,csvOutput(simulation,speaker),'text/csv')};
 $('all-csv').onclick=()=>{void compare().then(sims=>{const csv=sims.map((s,i)=>csvOutput(s,speaker).split('\n').slice(i?1:0).join('\n')).join('\n');fileDownload('cognitive_speech_models-comparison.csv',csv,'text/csv')}).catch(e=>message(e.message))};
 $('wav').onclick=()=>{if(nativeResult)fileDownload('cognitive_speech_models-vtl.wav',wavBlob(),'audio/wav')};
