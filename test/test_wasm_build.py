@@ -1,6 +1,8 @@
 """Tests for the build script only; no upstream VTL or em++ dependency."""
 import importlib.util
 import pathlib
+import json
+import re
 import tempfile
 import unittest
 
@@ -31,6 +33,15 @@ class BuildTests(unittest.TestCase):
             self.assertIn('-sASSERTIONS=2',diagnostic)
             self.assertNotIn('-sNO_ENTRY=1',cmd)
             self.assertIn('-sMODULARIZE=1',cmd)
+            runtime_arg=next(arg for arg in cmd if arg.startswith('-sEXPORTED_RUNTIME_METHODS='))
+            runtime_exports=set(json.loads(runtime_arg.split('=',1)[1]))
+            self.assertTrue({'cwrap','FS','HEAPU8','HEAP32','HEAPF64'} <= runtime_exports)
+            # Automatically catch missing heap exports when the runtime starts
+            # reading additional Emscripten memory views in future releases.
+            js=(MODULE.parents[1]/'src/engine/wasm-runtime.js').read_text()
+            referenced=set(re.findall(r'\bthis\.m\.(HEAP[A-Z0-9]+)\b',js))
+            self.assertTrue(referenced <= runtime_exports,
+                f'Unexported VTL runtime heap views: {referenced-runtime_exports}')
             self.assertIn('_vtlSynthBlock',str(cmd))
             self.assertIn('_vtlExportTractSvg',str(cmd))
             self.assertIn('--embed-file',cmd)

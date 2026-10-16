@@ -25,6 +25,11 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 UPSTREAM='https://github.com/TUD-STKS/VocalTractLabBackend-dev.git'
+# Keep the JS-facing memory views exported: newer Emscripten versions no
+# longer expose HEAP* views on Module unless listed explicitly.
+# src/engine/wasm-runtime.js relies on these views for C API marshalling.
+RUNTIME_EXPORTS = ['cwrap', 'FS', 'HEAPU8', 'HEAP32', 'HEAPF64']
+
 EXPORTS=[
     '_malloc','_free','_vtlInitialize','_vtlClose','_vtlGetConstants',
     '_vtlGetTractParamInfo','_vtlGetGlottisParamInfo','_vtlGetTractParams',
@@ -61,7 +66,7 @@ def build_command(source:Path,speaker:Path,out:Path,diagnostic:bool=False)->list
         '-sSTACK_OVERFLOW_CHECK=2',
         *(['-g3','-sSAFE_HEAP=1'] if diagnostic else []),
         '-sEXPORTED_FUNCTIONS='+json.dumps(EXPORTS),
-        '-sEXPORTED_RUNTIME_METHODS='+json.dumps(['cwrap','FS']),
+        '-sEXPORTED_RUNTIME_METHODS='+json.dumps(RUNTIME_EXPORTS),
         '--embed-file',str(speaker)+'@/speaker.speaker',
         '-o',str(out/'vtl.js'),
     ]
@@ -112,7 +117,8 @@ def main()->int:
         'speaker_file':speaker.name,'speaker_embedded_path':'/speaker.speaker',
         'compiler':subprocess.run(['em++','--version'],text=True,capture_output=True).stdout.splitlines()[:1],
         'status':'compiled-not-yet-validated-against-reference-audio',
-        'diagnostic':a.diagnostic,'stack_size_bytes':16777216,'initial_memory_bytes':268435456}
+        'diagnostic':a.diagnostic,'stack_size_bytes':16777216,'initial_memory_bytes':268435456,
+        'runtime_exports':RUNTIME_EXPORTS}
     (out/'build.json').write_text(json.dumps(manifest,indent=2)+'\n')
     for name in ('vtl.js','vtl.wasm','vtl.data'):
         f=out/name
