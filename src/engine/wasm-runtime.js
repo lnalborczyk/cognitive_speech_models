@@ -75,9 +75,11 @@ export class WasmVTL {
       };
     });
   }
-  init(path='/speaker.speaker') {
+  init(path='/speaker.speaker',progress=()=>{}) {
+    progress('calling vtlInitialize with embedded speaker model');
     ensure(this.initialize(path),'vtlInitialize');
     try {
+      progress('reading VTL constants');
       const constants=this.using([4,4,4,4,4,8],(a,b,c,d,e,f)=>{
         ensure(this.getConstants(a,b,c,d,e,f),'vtlGetConstants');
         const heap=this.m.HEAP32;
@@ -86,8 +88,11 @@ export class WasmVTL {
       if(constants.rate<8000||constants.tract<1||constants.glottis<2||constants.tract>100)
         throw new Error('Invalid speaker dimensions returned by VTL');
       this.rate=constants.rate;this.ntube=constants.tube;this.ntract=constants.tract;this.nglottis=constants.glottis;
+      progress('reading tract parameter metadata');
       this.tract=this.infoFrom(this.getTractInfo,this.ntract);
+      progress('reading glottis parameter metadata');
       this.glottis=this.infoFrom(this.getGlottisInfo,this.nglottis);
+      progress('reading speaker phonetic shapes');
       this.shapes={};
       for(const phoneme of CHECK_PHONES) {
         this.using([this.ntract*8],p=>{
@@ -97,6 +102,7 @@ export class WasmVTL {
         });
       }
       if(!this.shapes.a||!this.shapes.i)throw new Error('Speaker lacks the required a/i target shapes');
+      progress('VTL initialization finished');
       this.ready=true;
       return this.speaker();
     } catch(e) {this.close();throw e;}

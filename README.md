@@ -1,8 +1,14 @@
 # Cognitive Speech Models
 
-**Version 0.8.0 — free GitHub Pages / WebAssembly experiment**
+**Version 0.8.1 — free GitHub Pages / WebAssembly experiment**
 
 Interactive speech-production research demonstrator using four **theory-inspired** controller modules (DIVA, GODIVA, GEPPETO, Task Dynamics) and a shared VocalTractLab (VTL) articulatory/acoustic engine. All articulator SVG frames and synthesized audio require **real VTL**; there is no schematic browser fallback.
+
+## Diagnosing a failed GitHub Pages browser build (v0.8.1)
+
+The v0.8.0 browser test waited three minutes for `#engine-status.ready`, even when VTL initialization had failed. This release adds progress messages for WebAssembly import, C++ static constructors, `vtlInitialize`, metadata loading and the initial synthesis, with a worker startup watchdog. The smoke test fails immediately on a reported initialization/synthesis error and saves `artifacts/vtl-browser-result.json` and a screenshot. The underlying VTL WebAssembly initialization problem is **not yet established or fixed**.
+
+After pushing to GitHub, open the failed Actions run → **Artifacts** → `vtl-wasm-diagnostics`. Inspect `vtl-browser-result.json`, especially `lastScreen.engineStatus`, `events` and `network`. Send that JSON to diagnose the actual cause. No local VTL installation is needed for GitHub Actions.
 
 ## Free online hosting: GitHub Pages
 

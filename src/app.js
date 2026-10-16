@@ -9,7 +9,10 @@ const $=id=>document.getElementById(id);
 const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
 const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,.8,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Feedback delay',0,180,10,60,' ms'],['perturbation','Auditory perturbation (proxy)',-200,200,20,0,' Hz'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let native=null,wasm=null,speaker=null,simulation=null,nativeResult=null;
-const wasmClient=new BrowserVTLClient();
+const wasmClient=new BrowserVTLClient({onProgress: phase => {
+  $('engine-status').textContent='Loading browser VTL: '+phase;
+  console.info('[VTL]',phase);
+}});
 let playing=false,animation=null,started=0,playOffset=0,timeline='silent';
 let activeAudio=null,audioURL=null,requestId=0;
 const nativePlayer=new NativeTractAnimation($('native-geometry'));
@@ -42,6 +45,7 @@ async function connect(){
  nativePlayer.clear('Connecting to VocalTractLab…');plotArea(null);
  setConnected(false);
  $('reconnect').disabled=true;
+ $('engine-status').dataset.state='connecting';
  $('engine-status').textContent='Connecting to VocalTractLab…';
  const notes=[];
  try{
@@ -51,7 +55,7 @@ async function connect(){
      const response=await fetch('/api/status',{cache:'no-store'});
      if(!response.ok)throw Error(`No VTL API on this web origin (HTTP ${response.status})`);
      const status=await response.json();
-     if(status.appVersion!=='0.8.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
+     if(status.appVersion!=='0.8.1')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
      if(!status.available)throw Error(status.error||'Native VTL is unavailable');
      const res=await fetch('/api/speaker',{cache:'no-store'});
      if(!res.ok)throw Error(`Native VTL speaker unavailable (HTTP ${res.status})`);
@@ -73,7 +77,7 @@ async function connect(){
          const opt=$('engine').querySelector('[value="wasm"]');opt.disabled=false;
          opt.textContent='VocalTractLab WebAssembly (in-browser)';
          notes.push(`Browser VTL initialized (${wasm.names.length} tract parameters).`);
-       }else notes.push('Browser WASM binary not installed.');
+       }else notes.push('Browser WASM assets unavailable: '+wasmClient.assetStatus.join('; '));
      }catch(e){
        notes.push(`Browser WASM initialization failed: ${e.message}.`);
        wasmClient.close();
@@ -83,6 +87,8 @@ async function connect(){
    if(speaker)$('engine').value=native?'vtl':'wasm';
    $('engine-status').textContent=notes.join(' ');
    $('engine-status').classList.toggle('ready',!!speaker);
+   $('engine-status').dataset.state=speaker?'ready':'error';
+   if(!speaker)console.error('[VTL] Engine initialization failed:',notes.join(' '));
    setConnected(!!speaker);
    setEngineDetails();
    if(speaker)await run();
@@ -93,6 +99,7 @@ async function connect(){
      message('No VTL engine connected. Simulation and audio are disabled.');
    }
  }catch(e){
+   $('engine-status').dataset.state='error';
    $('engine-status').textContent='Unexpected connection error: '+e.message;
    nativePlayer.clear('VTL connection failed. See the status message.');
    console.error('VTL connection error:',e);

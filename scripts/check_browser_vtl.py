@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Require actual VTL WebAssembly synthesis + anatomy before Pages release.
+"""Fail-fast, instrumented browser VTL test. Saves diagnostics even on failure.
 
-Creates screenshot and JSON logs for debugging in GitHub Actions, including on
-failure. This is an integration check: compiled VTL must execute in Chromium.
+If the browser reports a definitive startup or synthesis error, report it
+immediately rather than hiding the root cause behind a 180-second timeout.
 """
 from __future__ import annotations
 import argparse
@@ -25,8 +25,9 @@ def free_port():
 
 @contextmanager
 def serve(port):
-    p = subprocess.Popen(['python3','-m','http.server',str(port),'--bind','127.0.0.1'],
-                         cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    server = subprocess.Popen(
+        ['python3', '-m', 'http.server', str(port), '--bind', '127.0.0.1'],
+        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(60):
             try:
@@ -38,60 +39,102 @@ def serve(port):
             raise RuntimeError('Static HTTP server failed to start')
         yield
     finally:
-        p.terminate()
-        try: p.wait(timeout=5)
-        except subprocess.TimeoutExpired: p.kill()
+        server.terminate()
+        try:
+            server.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server.kill()
+
+
+def snapshot(page):
+    return page.evaluate('''() => {
+      const e=document.querySelector('#engine-status');
+      const a=document.querySelector('#audio-status');
+      const n=document.querySelector('#native-geometry');
+      const w=document.querySelector('#wav');
+      return {
+        title: document.title,
+        engineStatus: e?.textContent||'missing',
+        engineState: e?.dataset.state||'unknown',
+        engine: document.querySelector('#engine')?.value||null,
+        audioStatus: a?.textContent||'missing',
+        wavReady: w ? !w.disabled : false,
+        svgCount: n?.querySelectorAll('img').length||0,
+        svgReady: !!n?.querySelector('img')?.complete,
+      };
+    }''')
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--artifacts', type=Path, default=ROOT/'artifacts')
-    p.add_argument('--timeout', type=int, default=180_000, help='Browser timeout (milliseconds)')
-    a = p.parse_args()
-    a.artifacts.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--artifacts', type=Path, default=ROOT/'artifacts')
+    parser.add_argument('--timeout', type=int, default=180_000)
+    parser.add_argument('--chromium-path', default='', help='Use a local Chromium binary instead of Playwright-managed Chromium')
+    args = parser.parse_args()
+    args.artifacts.mkdir(parents=True, exist_ok=True)
     from playwright.sync_api import sync_playwright
     port = free_port()
-    observations = {'url':f'http://127.0.0.1:{port}/', 'events':[], 'responses':{}, 'result':'not_started'}
+    log = {'url': f'http://127.0.0.1:{port}/', 'events': [], 'network': [], 'result': 'not_started'}
+    page = None
     try:
         with serve(port), sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=['--no-sandbox'])
-            page = browser.new_page(viewport={'width':1280,'height':880})
-            page.set_default_timeout(a.timeout)
-            page.on('console', lambda msg: observations['events'].append('console '+msg.type+': '+msg.text) if msg.type in ('error','warning') else None)
-            page.on('pageerror', lambda err: observations['events'].append('pageerror: '+str(err)))
-            page.on('requestfailed', lambda req: observations['events'].append('requestfailed: '+req.url+' '+str(req.failure)))
-            page.on('response', lambda res: observations['responses'].update({res.url.split('/')[-1]:res.status})
-                    if any(res.url.split('?')[0].endswith(x) for x in ('vtl.js','vtl.wasm','vtl.data')) else None)
+            browser = pw.chromium.launch(headless=True, args=['--no-sandbox'],
+                                         **({'executable_path': args.chromium_path} if args.chromium_path else {}))
+            page = browser.new_page(viewport={'width': 1280, 'height': 880})
+            page.set_default_timeout(args.timeout)
+            page.on('console', lambda msg: log['events'].append(f'console {msg.type}: {msg.text}'))
+            page.on('pageerror', lambda error: log['events'].append('pageerror: ' + str(error)))
+            page.on('requestfailed', lambda req: log['events'].append(f'requestfailed: {req.url} {req.failure}'))
+            page.on('response', lambda res: log['network'].append({'url': res.url, 'status': res.status})
+                    if any(x in res.url for x in ('vtl.', 'wasm-worker', 'wasm-runtime')) else None)
             try:
-                page.goto(observations['url'], wait_until='domcontentloaded', timeout=30000)
-                page.wait_for_function("document.querySelector('#engine-status')?.classList.contains('ready')", timeout=a.timeout)
-                page.wait_for_function("!document.querySelector('#audio')?.disabled && !document.querySelector('#wav')?.disabled", timeout=a.timeout)
-                page.locator('#native-geometry img').first.wait_for(state='visible', timeout=a.timeout)
-                result = page.evaluate('''() => ({
-                  engine: document.querySelector('#engine').value,
-                  status: document.querySelector('#engine-status').textContent,
-                  svgCount: document.querySelectorAll('#native-geometry img').length,
-                  svgReady: !!document.querySelector('#native-geometry img')?.complete,
-                  wavReady: !document.querySelector('#wav').disabled,
-                  areaText: document.querySelector('#area-label')?.textContent,
-                })''')
-                observations['checks'] = result
-                assert result['engine'] == 'wasm', 'Test did not use the browser WebAssembly engine'
-                assert result['svgReady'] and result['svgCount'] >= 1, 'No rendered VTL SVG anatomy'
-                assert result['wavReady'], 'VTL did not synthesize playable audio'
-                assert any(name.startswith('vtl.wasm') and code == 200 for name,code in observations['responses'].items()), 'WASM binary not fetched successfully'
-                observations['result'] = 'PASS'
-                print('Real VTL WebAssembly browser test PASSED:',result)
+                page.goto(log['url'], wait_until='domcontentloaded', timeout=30000)
+                # Wait for a terminal state (ready OR error), not just success.
+                page.wait_for_function('''() => {
+                  const e=document.querySelector('#engine-status');
+                  return e?.classList.contains('ready') || e?.dataset.state==='error';
+                }''', timeout=min(args.timeout, 75000))
+                state = snapshot(page)
+                if state['engineState'] == 'error':
+                    raise RuntimeError('VTL initialization failed: ' + state['engineStatus'])
+                # VTL synthesis can be more expensive than startup. Stop if it
+                # reports an error, and record the displayed error verbatim.
+                page.wait_for_function('''() => {
+                  const wav=document.querySelector('#wav');
+                  const status=document.querySelector('#audio-status')?.textContent||'';
+                  return (wav && !wav.disabled) || status.startsWith('Error:');
+                }''', timeout=args.timeout)
+                state = snapshot(page)
+                if not state['wavReady']:
+                    raise RuntimeError('VTL synthesis failed: ' + state['audioStatus'])
+                page.locator('#native-geometry img').first.wait_for(state='visible', timeout=15000)
+                state = snapshot(page)
+                log['checks'] = state
+                if state['engine'] != 'wasm':
+                    raise AssertionError('Test did not use browser WebAssembly VTL')
+                if not state['svgReady'] or state['svgCount'] == 0:
+                    raise AssertionError('No rendered VTL SVG anatomy')
+                if not any('vtl.wasm' in item['url'] and item['status']==200 for item in log['network']):
+                    raise AssertionError('Compiled VTL WASM binary was not successfully fetched')
+                log['result'] = 'PASS'
+                print('Real VTL WebAssembly browser test PASSED:', state)
             finally:
-                page.screenshot(path=str(a.artifacts/'vtl-browser.png'),full_page=True,timeout=15000)
-                observations['statusText'] = page.locator('#engine-status').inner_text(timeout=1000) if page.locator('#engine-status').count() else 'missing'
+                try:
+                    log['lastScreen'] = snapshot(page)
+                    page.screenshot(path=str(args.artifacts/'vtl-browser.png'), full_page=True, timeout=15000)
+                except Exception as error:
+                    log['events'].append('could not save browser screenshot: ' + str(error))
                 browser.close()
     except Exception as error:
-        observations['result']='FAIL'
-        observations['exception'] = repr(error)
+        log['result'] = 'FAIL'
+        log['exception'] = str(error)
+        print('VTL browser test FAILED:', error, flush=True)
+        if 'lastScreen' in log:
+            print('Browser status:', json.dumps(log['lastScreen'], indent=2), flush=True)
+        print('Recent console messages:', *log['events'][-15:], sep='\n  ', flush=True)
         raise
     finally:
-        (a.artifacts/'vtl-browser-result.json').write_text(json.dumps(observations, indent=2))
+        (args.artifacts/'vtl-browser-result.json').write_text(json.dumps(log, indent=2))
 
 
 if __name__ == '__main__':

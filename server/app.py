@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from .vtl import VocalTractLab, VTLError
 
 ROOT=Path(__file__).resolve().parent.parent
-APP_VERSION="0.8.0"
+APP_VERSION="0.8.1"
 
 
 def get_vtl():
