@@ -2,6 +2,8 @@
  * Progress is sent before each synchronous C++ stage, making hangs diagnosable.
  */
 import {WasmVTL} from './wasm-runtime.js';
+import {VTLSensoryObserver} from './vtl-sensing.js';
+import {simulate} from '../sim/runner.js';
 let backend=null;
 self.onmessage=async event=>{
   const {id,method,args={}}=event.data;
@@ -27,6 +29,20 @@ self.onmessage=async event=>{
         result=candidate.init('/speaker.speaker',progress);
         backend=candidate;
       }else result=backend.speaker();
+    }else if(method==='simulate'||method==='simulate-only'){
+      if(!backend)throw new Error('VTL engine not initialized');
+      progress('measuring VTL sensory feedback during motor simulation');
+      const observer=new VTLSensoryObserver(backend);
+      const sim=simulate(args.model,args.phrase,backend.speaker(),args.cfg,s=>observer.at(s));
+      if(method==='simulate-only')result=sim;
+      else {
+        progress('synthesizing VTL audio and anatomical geometry');
+        const frames=sim.frames.map(f=>({t:f.t,x:f.x}));
+        const references=sim.score.gestures.filter(g=>g.kind==='stop').map(g=>
+          ({phone:g.phone,context:g.context,source:g.source,x:g.target}));
+        const output=backend.synthesize(frames,{...(args.options||{}),referenceTargets:references});
+        result={simulation:sim,output};
+      }
     }else if(method==='synthesize'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('generating native waveform and geometry');

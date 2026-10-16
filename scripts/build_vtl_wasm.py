@@ -33,7 +33,7 @@ RUNTIME_EXPORTS = ['cwrap', 'FS', 'HEAPU8', 'HEAP32', 'HEAPF64']
 EXPORTS=[
     '_malloc','_free','_vtlInitialize','_vtlClose','_vtlGetConstants',
     '_vtlGetTractParamInfo','_vtlGetGlottisParamInfo','_vtlGetTractParams',
-    '_vtlSynthBlock','_vtlTractToTube','_vtlExportTractSvg',
+    '_vtlSynthBlock','_vtlTractToTube','_vtlExportTractSvg','_vtlGetTransferFunction',
 ]
 
 

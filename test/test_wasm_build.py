@@ -44,4 +44,5 @@ class BuildTests(unittest.TestCase):
                 f'Unexported VTL runtime heap views: {referenced-runtime_exports}')
             self.assertIn('_vtlSynthBlock',str(cmd))
             self.assertIn('_vtlExportTractSvg',str(cmd))
+            self.assertIn('_vtlGetTransferFunction',str(cmd))
             self.assertIn('--embed-file',cmd)

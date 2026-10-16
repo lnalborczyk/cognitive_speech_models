@@ -1,0 +1,8 @@
+Cognitive Speech Models v1.0.0
+
+Extract the patch into the root of an existing v0.9.0 checkout.
+Remove the obsolete source file src/cognitive/geppeto.js (renamed to geppeto-ofc.js).
+Run npm test, commit and push to main. The GitHub Pages workflow compiles VTL
+with the newly exported vtlGetTransferFunction C API entry point.
+
+The browser VTL integration must still be tested by GitHub Actions with a real JD3 speaker.

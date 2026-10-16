@@ -5,7 +5,7 @@ export function mulberry32(seed){let v=seed>>>0;return ()=>{v+=0x6D2B79F5;let x=
 /** The exact same normalized controller states are supplied to both output
  * backends. VTL natively maps them into speaker-specific physical tract units.
  */
-export function simulate(model,phrase,speaker,cfg={}){
+export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
   const c={rate:1,overlap:.3,feedback:.75,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,seed:17,...cfg};
   if(!Number.isFinite(c.rate)||c.rate<=0)throw new Error('rate must be positive');
   const score=makeScore(phrase,speaker,c);
@@ -18,12 +18,13 @@ export function simulate(model,phrase,speaker,cfg={}){
     const t=n*dt;
     const act=activation(score,t);
     const target=blendedTarget(score,t);
-    const result=controller.step({x:plant.x.slice(),v:plant.v.slice(),target,dt,t,
+    const sensory=sensoryProvider?sensoryProvider({x:plant.x.slice(),target,phone:score.phones[act.chosen],context:score.gestures[act.chosen].context,step:n,t}):null;
+    const result=controller.step({x:plant.x.slice(),v:plant.v.slice(),target,dt,t,sensory,
       weights:act.weight,selected:act.chosen,score,speaker});
     const command=result.u.map(u=>clamp(u,-75,75));
     plant.step(command,dt,()=>c.noise*(random()+random()-1)*18);
     frames.push({t:+t.toFixed(3),x:plant.x.slice(),v:plant.v.slice(),target,
-      u:command,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],
+      u:command,sensory:sensory?{auditory:sensory.auditory,area:sensory.constriction?.area??null,locationCm:sensory.constriction?.locationCm??null}:null,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],
       kind:score.gestures[result.selected]?.kind||'vowel'});
   }
   return {model,phrase,cfg:c,score,frames,speaker:speaker.kind,
@@ -42,8 +43,8 @@ function calculateMetrics(frames){
 }
 export function csvOutput(data,speaker){
   const names=speaker.names.map((n,i)=>String(n||`tract_${i}`).replaceAll(',', '_'));
-  const rows=[['model','t_s','phone','selected',...names,'tracking_rms','mean_effort'].join(',')];
+  const rows=[['model','t_s','phone','selected',...names,'tracking_rms','mean_effort','F1_Hz','F2_Hz','F3_Hz','task_area_cm2','task_location_cm'].join(',')];
   for(const f of data.frames)rows.push([data.model,f.t,f.phone,f.selected,...f.x.map(x=>x.toFixed(6)),
-    data.metrics.normalizedTrackingRMS.toFixed(5),data.metrics.effortMean.toFixed(3)].join(','));
+    data.metrics.normalizedTrackingRMS.toFixed(5),data.metrics.effortMean.toFixed(3),...(f.sensory?.auditory||[null,null,null]).map(v=>v??''),f.sensory?.area??'',f.sensory?.locationCm??''].join(','));
   return rows.join('\n');
 }

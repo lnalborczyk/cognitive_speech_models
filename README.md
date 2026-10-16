@@ -1,115 +1,80 @@
 # Cognitive Speech Models
 
-An interactive, browser-based sandbox for exploring speech motor control, articulatory movement, and acoustic synthesis.
+**[Try the interactive application](https://lnalborczyk.github.io/cognitive_speech_models/)** · [Source code](https://github.com/lnalborczyk/cognitive_speech_models) · [Report an issue](https://github.com/lnalborczyk/cognitive_speech_models/issues)
 
-**[Launch the application](https://lnalborczyk.github.io/cognitive_speech_models/)** · [Source code](https://github.com/lnalborczyk/cognitive_speech_models) · [Report an issue](https://github.com/lnalborczyk/cognitive_speech_models/issues)
+A browser-based research and teaching sandbox for exploring speech motor control with a shared [VocalTractLab (VTL)](https://www.vocaltractlab.de/) vocal-tract geometry and acoustic synthesizer.
 
-## Overview
+The public application runs entirely in the browser using WebAssembly. Visitors can inspect sagittal articulatory movements, hear synthesized speech, compare controller trajectories, manipulate gesture timing and altered auditory feedback, and export measurements.
 
-Cognitive Speech Models combines four **theory-inspired speech-production controllers** with a common [VocalTractLab (VTL)](https://www.vocaltractlab.de/) articulatory and acoustic synthesizer. Users can explore how controller settings influence articulatory trajectories, inspect VTL-generated sagittal vocal-tract animations, area functions, constriction timing and spectrograms, and listen to synthetic speech.
+> **Scientific scope:** VocalTractLab supplies the vocal-tract and acoustic calculations. The cognitive controllers are transparent **reduced-order, theory-inspired implementations**, not reproductions or fitted parameter sets of the published DIVA, GODIVA, Task Dynamics or GEPPETO-OFC models. Outputs must not be presented as predictions of those models without further validation.
 
-The online version runs VTL in the browser using WebAssembly, with no software installation or remote synthesis server required. Computation happens locally in the user's browser.
+## Using the application
 
-**Scientific status:** The VTL geometry and acoustic synthesis are provided by the upstream research software. The four cognitive controllers are deliberately simplified teaching and exploratory implementations, **not validated reproductions** of DIVA, GODIVA, GEPPETO, or Task Dynamics. In particular, the current controller dynamics are not fitted to human articulatory data, and the simulated auditory error does not yet use acoustic feedback from VTL.
+1. Open the [online simulator](https://lnalborczyk.github.io/cognitive_speech_models/) and allow VocalTractLab WebAssembly to initialize.
+2. Choose a model and phonetic sequence; vowel sequences and context-dependent `/p/`, `/t/` and `/k/` sequences are available with the bundled JD3 speaker.
+3. Change speech rate, gestural overlap, feedback gain/delay, an auditory F1 feedback shift, motor noise or articulator stiffness.
+4. Run the simulation, then select **Play speech + animation**. The anatomical SVG frames and acoustic waveform are produced by the same VTL trajectory.
+5. Examine articulatory trajectories, VTL tube area, online transfer-function resonance estimates (F1–F3), the waveform spectrogram, and possible consonant closures. Use the time scrubber or export WAV/CSV data.
 
-## Try the simulator
+**Browser vs local native mode:** In the public WebAssembly version, the controller receives measured VTL acoustic and constriction variables **during trajectory generation**. The optional Python/native VTL route currently uses open-loop synthesis after a proprioceptive-only motor simulation. Auditory feedback/perturbation controls are disabled in that mode.
 
-1. Open the **[live application](https://lnalborczyk.github.io/cognitive_speech_models/)** and wait for **VocalTractLab WebAssembly** to initialize.
-2. Select a controller and an available phonetic sequence.
-3. Adjust speech rate, gestural overlap, feedback settings, motor noise, or articulatory stiffness.
-4. Select **Run simulation**, followed by **Play speech + animation** to hear the VTL waveform while viewing synchronized articulatory motion.
-5. Inspect the vocal-tract area function, articulatory trajectories, acoustic spectrogram, candidate closures, and gestural activations. Use the timeline scrubber to examine individual frames; export CSV or WAV files for further analysis.
+### Models and mechanisms
 
-WebAssembly initialization and synthesis can take some time on slower devices. If the engine does not start, try a current desktop version of Chromium-based browsers or Firefox and report the browser version and error message in an [issue](https://github.com/lnalborczyk/cognitive_speech_models/issues). Browser compatibility has not been comprehensively validated.
-
-### Speech sequences and stop consonants
-
-The available sequences include `/a i a/`, `/a u a/`, `/i a i/`, `/a p a/`,
-`/a t a/`, `/a k a/`, `/i p i/`, `/i t i/`, `/i k i/`, `/u p u/`,
-`/u t u/`, `/u k u/`, and `/p a t a k a/`.
-
-Consonantal targets are resolved from the current speaker's explicitly named
-**context-dependent VTL constriction shapes**, not invented from the symbols
-`p`, `t`, or `k`:
-
-- `/p/`: `ll-labial-closure(a/i/u)`
-- `/t/`: `tt-alveolar-closure(a/i/u)`
-- `/k/`: `tb-velar-closure(a/i/u)`
-
-If a speaker lacks a required target, the sequence is disabled. Stop gestures
-use a finite target-hold plateau and overlapping transitions. These are
-**simplified kinematic targets**, not a complete stop production model:
-VTL's consonant timing, laryngeal coordination, intraoral pressure and release
-transients have not been validated for this implementation.
-
-### Acoustic and constriction diagnostics
-
-The simulator displays a low-resolution **spectrogram computed from the VTL
-waveform**, a VTL-derived minimum oral area time course, and candidate stop
-closures. A configurable research threshold is currently fixed at **0.08 cm²**
-(with the first 25% of the tube excluded to reduce posterior confounds); it
-is a *heuristic* and is not an independently validated closure classifier.
-
-For stop sequences, the application also compares the minimum simulated oral
-area with the **static VTL tube geometry of the named speaker target**. The
-static target is a useful reference, but it is not a full VTL gestural-score
-trajectory.
-
-**Compare all four through VTL** runs the four controllers with the same
-targets and random seed and reports acoustic RMS, minimum oral area, and the
-number of detected candidate closures. CSV export is available. These
-measurements support exploratory comparisons, not claims of model validity.
-
-## Controllers
-
-| Controller | Implemented principle | Current simplification |
+| Controller | Implemented principle | Important exclusions |
 | --- | --- | --- |
-| **DIVA-inspired** | Feedforward target tracking plus delayed auditory and somatosensory corrections | Sensory errors are computed in articulatory parameter space, not from measured/predicted acoustics |
-| **GODIVA-inspired** | Competitive activation and serial selection of planned units | Does not implement the published neural sequencing and initiation circuitry |
-| **GEPPETO-inspired** | Regularized local tracking and motor-effort costs | No finite-element tongue, muscle-force dynamics, or trajectory-wide optimization |
-| **Task Dynamics-inspired** | Overlapping gestures, coupled lip/tongue task-coordinate surrogates and a damped Jacobian-transpose controller | The task coordinates are constructed from tract parameters, **not** VTL-calibrated constriction degree/location; no dynamical pseudoinverse |
+| **DIVA-inspired** | Feedforward articulatory targets; delayed somatosensory feedback; local feedback correction based on VTL transfer-function resonances | No trained speech-sound map, neuroanatomical circuit, learned inverse maps or feedback adaptation across trials |
+| **GODIVA-inspired** | Competitive, serial gestural selection followed by DIVA-inspired motor control | No learned phonological sequence chunks or full published basal ganglia–cortical dynamics |
+| **Task Dynamics-inspired** | Overlapping gestures; stop constriction degree measured by VTL; finite-difference Jacobian with respect to articulatory parameters; vowel resonance targets | Does not implement complete gestural score, gestural planning dynamics or physically measured articulatory stiffness |
+| **GEPPETO-OFC-inspired** | Local, regularized multisensory control objective balancing target accuracy, effort and change in commands | **Not** the published GEPPETO finite-element tongue, muscle activation model, state estimator or full stochastic/trajectory-wide OFC solution |
 
-All controllers share the same simplified actuator dynamics and VTL synthesizer. This enables controlled demonstrations, but it should not be interpreted as a validated comparison of the complete theories.
+GEPPETO-OFC replaces the older GEPPETO-inspired demonstration because the [2025 model](https://doi.org/10.1121/10.0039197) explicitly examines optimal feedback and multisensory goals. The implementation is **conceptually inspired** by that model; no equivalence with its biomechanical results is implied.
 
-## How it works
+## How sensory feedback works (browser mode)
 
 ```text
-Phonetic sequence
-       ↓
-Gestural targets and timing
-       ↓
-DIVA / GODIVA / GEPPETO / Task Dynamics
-       ↓
-Shared normalized articulatory actuator
-       ↓
-VocalTractLab (WebAssembly, or optional local native library)
-       ├── vocal-tract contours / SVG animation
-       ├── cross-sectional area function
-       └── synthesized audio
+Phoneme / gestural sequence
+          ↓
+Cognitive controller + simplified shared actuator  ←─ delayed multisensory feedback
+          ↓                                                   ↑
+VTL tract parameters ─→ vtlTractToTube ─→ constriction area/location + Jacobian
+          │
+          └─────────────→ vtlGetTransferFunction ─→ estimated resonances + Jacobian
+          ↓
+vtlSynthBlock (synthesized waveform), vtlExportTractSvg (anatomical animation)
 ```
 
-The controller produces a time series of normalized articulatory parameter values. VTL converts these states into anatomical geometry and sound. **The acoustic output is currently computed after the controller trajectory, rather than being fed back into the controller during simulation.** The feedback and perturbation controls should therefore be interpreted as conceptual demonstrations.
+- At regular time intervals during the simulated movement, VTL calculates the acoustic tract transfer function and tube cross-sections for the current and target articulatory positions.
+- F1–F3 candidates are extracted from the transfer-function peaks, and a **local numerical sensory Jacobian** is estimated using small articulatory perturbations. This is a local estimate, *not* a learned forward or inverse sensory map.
+- For stops, the active constriction section is selected using the context-specific VTL closure target and an anatomically constrained search interval along the tube. Current aperture and local area sensitivity are measured from VTL. Region bounds and articulatory subsets are modeling assumptions that require validation.
+- A requested **F1 auditory perturbation** is applied to the *perceived* acoustic feedback (in Hz), **not** to VTL's sound generator. Its effects on produced movements can be inspected through the simulated closed loop.
+- The feedback implementation is offline-in-wall-clock-time but **online within simulated time**: subsequent motor commands depend on earlier sampled VTL sensory predictions. Audio synthesis follows the completed movement for listening and analysis.
 
-### Repository structure
+Measurements may fail at highly constricted vocal-tract configurations; missing resonance measurements are handled as missing data rather than replaced with guessed values. A nominal peak is not the same as a validated formant estimate, especially during voiceless stops.
 
-| Location | Responsibility |
+### Phonetic targets
+
+The included sequences cover `/a i a/`, `/a u a/`, `/i a i/`, `/a p a/`, `/a t a/`, `/a k a/`, `/i p i/`, `/i t i/`, `/i k i/`, `/u p u/`, `/u t u/`, `/u k u/`, and `/p a t a k a/`.
+
+Context-dependent closures are requested from the VTL speaker as `ll-labial-closure(a/i/u)`, `tt-alveolar-closure(a/i/u)`, and `tb-velar-closure(a/i/u)`. Unsupported shapes are never fabricated. These static closure targets and the simplified release schedule **do not constitute a validated model of stop voicing, burst, aspiration, or aerodynamic coordination**.
+
+## Reproducibility and source code
+
+| Path | Role |
 | --- | --- |
-| `src/cognitive/` | Independent speech-production controller modules |
-| `src/motor/` | Gestural targets, timing, and shared actuator dynamics |
-| `src/sim/` | Simulation loop, physical/acoustic diagnostics and exports |
-| `src/engine/` | VTL WebAssembly worker and C API interface |
-| `src/view/` | Anatomical playback, charts, and layout |
-| `server/` | Optional local native VTL integration |
-| `scripts/` | Setup, Emscripten build, smoke tests, and launch helpers |
-| `test/` | JavaScript, Python, and integration tests |
-| `.github/workflows/pages.yml` | Automated WebAssembly build, browser test, and GitHub Pages deployment |
-| `docs/` | Implementation, validation, and deployment notes |
+| `src/cognitive/` | Model-specific controllers; one small, inspectable file per controller |
+| `src/motor/` | Phonetic score, shared actuator, and sensor-to-motor correction terms |
+| `src/engine/vtl-sensing.js` | Online VTL constriction and transfer-function measurements; numerical Jacobians |
+| `src/engine/wasm-runtime.js`, `wasm-worker.js` | VTL C API, WebAssembly initialization, simulation and synthesis |
+| `src/sim/` | Deterministic simulation runner, CSV export and acoustic diagnostics |
+| `src/view/` | Synchronised VTL sagittal SVG, responsive visualizations |
+| `server/` | Optional native VTL server (open-loop controller mode) |
+| `scripts/` | Build, launch, validation and browser test utilities |
+| `.github/workflows/pages.yml` | Build-and-test gate followed by free GitHub Pages publication |
+| `test/` | JavaScript, Python and API mock tests |
 
-The browser interface also includes a source-code viewer to inspect the main model modules.
+Every comparison uses the same speaker and actuator, with the same user-provided seed. CSV records the trajectory and available sensory values; the build metadata records the upstream VTL revision. Controller parameter choices have **not** been fitted against human articulatory or neural datasets.
 
-## Development
-
-**Requirements:** Git, a current Node.js release, and Python 3. On the public site, visitors do not need any of these tools.
+### Development
 
 ```bash
 git clone https://github.com/lnalborczyk/cognitive_speech_models.git
@@ -117,47 +82,29 @@ cd cognitive_speech_models
 npm test
 ```
 
-To serve an existing **compiled** WebAssembly build locally:
+A fresh checkout generally does **not** include VTL binaries. For a local browser build, follow [the WebAssembly guide](docs/webassembly.md), then serve the repository over HTTP:
 
 ```bash
 python3 -m http.server 5173
-# Open http://localhost:5173/
 ```
 
-A fresh source checkout may not contain the compiled `web/vtl/vtl.js` and `web/vtl/vtl.wasm` files. To build them, use Emscripten and the upstream VTL speaker model according to [the WebAssembly build guide](docs/webassembly.md). For an existing native VTL installation, the optional local API can instead be launched with:
+To use an already installed native VTL shared library and speaker, run `python3 scripts/launch.py` and open the URL it prints. The GitHub Actions workflow compiles the browser VTL backend, checks the acoustic/geometry path in Chromium, and publishes the static application only after those checks pass. See [deployment](docs/deployment.md) and [validation](docs/validation.md).
 
-```bash
-python3 scripts/launch.py
-# Open the address printed by the launcher
-```
+## Scientific limitations and priorities
 
-The GitHub Pages workflow compiles VTL, runs source tests and a Chromium synthesis/geometry check, and deploys the static application when those checks succeed. See [deployment documentation](docs/deployment.md).
+This project is an **exploratory platform**, not a validated generative model of human speech. Key next steps include comparison with VTL's own gestural-score trajectories, validation of closure sites and predicted resonances, syllable-level laryngeal and aerodynamic timing, realistic sensory delays and estimator noise, calibration using EMA/acoustic datasets, learned DIVA maps, a more complete GODIVA sequencing model, and validation against the original GEPPETO-OFC biomechanics. See the [research roadmap](docs/research-roadmap.md).
 
-## Scientific roadmap
+## References
 
-Development priorities are **context-dependent consonant gestures**, **feedback based on acoustic and somatosensory predictions**, and **task-space motor control**, followed by benchmarking against measured articulation and speech acoustics. See the [research roadmap](docs/research-roadmap.md) for proposed experiments and acceptance criteria.
+- [VocalTractLab](https://www.vocaltractlab.de/) — [C++ backend](https://github.com/TUD-STKS/VocalTractLabBackend-dev)
+- [Tourville & Guenther (2011): DIVA](https://doi.org/10.1080/01690960903498424)
+- [Bohland, Bullock & Guenther (2010): GODIVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC2937837/)
+- [Saltzman & Munhall (1989): Task Dynamics](https://doi.org/10.1207/s15326969eco0104_2)
+- [Rakotomalala, Baraduc & Perrier (2025): GEPPETO-OFC](https://doi.org/10.1121/10.0039197)
+- [CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands), which inspired the modular sandbox organization.
 
-## Reproducibility and limitations
+## Licensing and contributions
 
-- Numerical settings, speaker choice, controller version, and random seed should be reported when sharing results.
-- The VTL speaker and upstream VTL revision influence physical geometry and acoustics; the build records the upstream revision in `web/vtl/build.json`.
-- The shared actuator is not a biomechanical simulation of muscle forces. GEPPETO-related predictions should not be interpreted as validated muscle-level predictions.
-- Parameter-space auditory perturbations do **not** yet implement actual shifted auditory feedback, and the resulting metrics are not calibrated to human speech data.
-- Consonantal closure, phonation, release, and coarticulation need dedicated implementation and validation before consonant sequences can be interpreted phonetically.
+The repository is licensed as stated in [LICENSE](LICENSE). The VocalTractLab backend is separately licensed under the GPL; compiled distributions must comply with the upstream terms and those applicable to the speaker resources.
 
-Additional details: [model architecture](docs/models.md) · [validation](docs/validation.md) · [WebAssembly](docs/webassembly.md).
-
-## References and attribution
-
-- **VocalTractLab:** [Official website](https://www.vocaltractlab.de/) · [backend source code](https://github.com/TUD-STKS/VocalTractLabBackend-dev)
-- **DIVA:** [Tourville & Guenther (2011)](https://doi.org/10.1080/01690960903498424)
-- **GODIVA:** [Bohland, Bullock & Guenther (2010)](https://pmc.ncbi.nlm.nih.gov/articles/PMC2937837/)
-- **Task Dynamics:** [Saltzman & Munhall (1989)](https://doi.org/10.1207/s15326969eco0104_2)
-- **GEPPETO:** [Patri et al. (2019), overview and model framework](https://pmc.ncbi.nlm.nih.gov/articles/PMC6824204/)
-- **Project inspiration:** [CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands)
-
-The Cognitive Speech Models repository is distributed under the terms in [LICENSE](LICENSE). VocalTractLab is separately developed and distributed under the GNU General Public License; redistribution of compiled VTL artifacts and speaker resources must follow their applicable terms. The model names indicate theoretical inspiration, not endorsement by the original model authors.
-
-## Contributing
-
-Bug reports, reproducible examples, tests, and contributions to the controller modules or VTL integration are welcome via [GitHub Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues) and [pull requests](https://github.com/lnalborczyk/cognitive_speech_models/pulls). Please document scientific assumptions and include tests for changes that affect simulated behavior.
+Contributions and reproducible bug reports are welcome through [GitHub Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues) and pull requests. Please document scientific assumptions and add tests when changing model behavior.

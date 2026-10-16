@@ -33,7 +33,7 @@ class TestNativeHostedAPI(unittest.TestCase):
                         break
                     except (OSError,URLError):time.sleep(.1)
                 else:self.fail('native test server did not start')
-                self.assertEqual(status['appVersion'],'0.9.0')
+                self.assertEqual(status['appVersion'],'1.0.0')
                 self.assertTrue(status['available'])
                 with urlopen(root+'/api/speaker') as res: speaker_info=json.load(res)
                 self.assertEqual(len(speaker_info['names']),8)

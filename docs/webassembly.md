@@ -59,7 +59,7 @@ python3 scripts/launch.py
 ## Architecture
 
 ```text
-src/cognitive/{diva,godiva,geppeto,task-dynamics}.js
+src/cognitive/{diva,godiva,geppeto-ofc,task-dynamics}.js
                   |
 src/sim/runner.js (same normalized trajectories)
                   |
@@ -123,3 +123,6 @@ Capture the browser DevTools console exception. The `--diagnostic` switch builds
 ## macOS Bash 3.2 fix (v0.6.1)
 
 The old `build_browser.sh` expanded an empty `EXTRA[@]` array with `set -u`, which raised `unbound variable` on Apple macOS Bash. The script now branches explicitly for normal and `--diagnostic` builds, reuses a previously installed Emscripten SDK, and does not require its reinstallation on each run. The real Emscripten compilation is still experimental and must be validated separately.
+
+
+For browser-based multisensory feedback, the Emscripten export list also includes `vtlGetTransferFunction`. Its spectral magnitude output is read by `src/engine/vtl-sensing.js`. After modifying C API exports, always rebuild the WASM binary (updating JavaScript alone is insufficient).

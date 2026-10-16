@@ -56,7 +56,7 @@ visual refresh rate.
 ## Model validity
 
 Real VTL provides anatomical geometry, area functions and synthesized audio.
-The parameter-space actuator, phone targets, DIVA/GODIVA/GEPPETO/Task Dynamics
+The parameter-space actuator, phone targets, DIVA/GODIVA/GEPPETO-OFC-inspired/Task Dynamics
 controllers, and their auditory feedback remain simplified and unvalidated.
 True closed-loop acoustic feedback has not been implemented. "VTL-native"
 does not mean the **complete speech production model** is validated.
@@ -66,3 +66,6 @@ does not mean the **complete speech production model** is validated.
 VTL is GPL-licensed. If distributing bundled derivatives/binaries, inspect
 its upstream license and satisfy applicable source, attribution and
 redistribution requirements. This ZIP does not bundle VTL binaries or claim to contain a validated VTL WASM build.
+
+
+The browser worker also uses `vtlGetTransferFunction` and `vtlTractToTube` during movement simulation for local sensory feedback. This is not equivalent to online native Python feedback. See [models](models.md).

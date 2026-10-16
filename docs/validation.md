@@ -1,48 +1,32 @@
-# Validation and scientific status
+# Scientific validation and interpretation
 
-## What is validated externally vs locally
+VocalTractLab (VTL) is established research software for geometrical and acoustic vocal-tract synthesis. Its use here **does not validate** the higher-level DIVA, GODIVA, Task Dynamics or GEPPETO-OFC-inspired controllers.
 
-VocalTractLab is an established **research model of vocal-tract geometry and acoustic speech synthesis**, supported by MRI-based speaker geometry and a physical acoustic solver. Its native API offers acoustics, vocal-tract area functions, and SVG tract geometries for a specified speaker. These properties are not transferred to the browser fallback or the model-inspired control laws. It would be inaccurate to call this combined simulator a validated DIVA, GODIVA, GEPPETO or Task Dynamics implementation.
+## Verified by repository tests
 
-## What has been tested in this repository
+- Deterministic, bounded normalized articulator trajectories for all four controllers using a shared simulated actuator.
+- Correct speaker-defined vowel and context-dependent stop shape lookup (with explicit errors for absent targets).
+- Correct JavaScript memory-marshalling of the VTL C API, and native ctypes integration using compiled test-only C libraries.
+- VTL API mock integration for online sensory signals, including transfer-function resonance extraction, numerical sensory correction and signs of feedback perturbations.
+- Browser interface layout at multiple viewport widths.
 
-- JavaScript numerical stability and deterministic trajectories for all controller modules;
-- cross-model common state dimensions (including a mocked 19-parameter VTL speaker);
-- absent named shape error handling;
-- standard-library PCM WAV encoding and physical-to-normalized parameter conversion;
-- native C ABI integration contract tested against a compiled **test-only stub**, including metadata, geometry, and WAV round-trip;
-- parsing/syntax checks;
-- visual frame timestamp selection, VTL SVG frame sequence, audio and HTTP gzip payload using the compiled test-only C ABI stub.
+These tests are **not** validation against published model simulations or human speech behavior. On deployment, GitHub Actions should compile the real upstream VTL backend and verify waveform/geometry playback in Chromium; the separate VTL transfer-function observer still requires empirical accuracy and runtime benchmarking.
 
-**Not tested in this working environment:** a full live upstream JD3
-WebAssembly synthesis run using this release, closure/release accuracy against
-independent acoustic or EMA data, perceptual intelligibility, a full
-consonant-larynx coordination model, task-Jacobian calibration against VTL
-geometry, learned acoustic feedback, or faithful published cognitive
-controller implementations. GitHub Actions is expected to verify the real
-upstream VTL binary in Chromium before publishing.
+## Outstanding limitations
 
-The stop detector in this version is deliberately described as a
-**candidate closure** based on minimum oral tube area below 0.08 cm², with
-posterior 25% of tract length excluded. This heuristic must be calibrated per
-speaker and sound category before using it as a research outcome.
+- **Speech biomechanics:** the normalized mass–spring actuator is not a muscle-level biomechanical plant. In particular, it is not the finite-element tongue used in GEPPETO-OFC.
+- **Formant identification:** VTL `vtlGetTransferFunction` provides physically computed transfer spectra; the current peak detector is fixed-band and does not perform validated LPC or resonance tracking. Missing peaks are not imputed.
+- **Task-space geometry:** stop contact sites are selected using VTL target cross-sections and approximate tract intervals. Numerical gradients represent local sensitivities at the present posture; they are not calibrated task-space coordinates across the entire vocal tract.
+- **Feedback:** delayed measurements and gain-weighted Jacobian corrections are heuristics. There is no learned DIVA inverse map, Kalman state estimator, or full stochastic optimal-feedback controller.
+- **Consonants:** context-dependent target poses alone do not guarantee stop closure, burst, pressure timing or appropriate laryngeal gestures.
+- **Backend parity:** online sensory feedback is available in the WebAssembly worker; native server mode remains an open-loop baseline for motor trajectories.
 
-## Recommended empirical benchmarks (research phase)
+## Suggested validation sequence
 
-1. Install and pin a VTL stable version and matching speaker model; synthesize transitions `/a i a/` and `/a u a/`. Check audio playback and tract SVG outputs.
-2. Compare the area function to VTL's own GUI and official API examples; verify parameter ordering and units.
-3. Estimate F1–F3 from *actual generated waveforms* (e.g. LPC with independently validated settings) and compare with known VTL reference vowels.
-4. Acquire and analyze human EMA/ultrasound/MRI movement trajectories and acoustic timing data (including coarticulation and perturbation adaptation).
-5. Fit dynamic actuator parameters to EMA or biomechanical data rather than tuning by eye; examine speaker generalization.
-6. Replace proxy DIVA acoustic mapping with a forward-model interface updated during simulation (requiring online synthesis or surrogate model).
-7. Build gestural constriction coordinates and a Jacobian from calibrated VTL geometries, then assess Task Dynamics and GEPPETO predictions separately.
-8. Benchmark GODIVA competitive planning against behavioral errors and real neural planning signals.
+1. Compare VTL formants and stop target geometry with official upstream examples for JD3, including native-versus-WebAssembly equivalence.
+2. Test finite-difference convergence (different perturbation sizes) and constriction-site stability across vowel contexts.
+3. Quantify auditory feedback compensation for both positive and negative F1 shifts, including null effects when auditory gain is zero; repeat over a range of delays.
+4. Evaluate VTL synthesized vowel formants against independent acoustic estimators, then compare predicted stop closure/release with articulatory data.
+5. Compare each controller against its published original implementation before drawing theoretical conclusions. In particular, no result here should be labelled a validated GEPPETO-OFC simulation.
 
-## References
-
-- Birkholz, P. VocalTractLab: https://vocaltractlab.de/
-- Native API header: https://github.com/TUD-STKS/VocalTractLabBackend-dev/blob/main/include/VocalTractLabApi/VocalTractLabApi.h
-- Tourville & Guenther, DIVA: https://pmc.ncbi.nlm.nih.gov/articles/PMC3650855/
-- Bohland, Bullock & Guenther, GODIVA: https://pmc.ncbi.nlm.nih.gov/articles/PMC2937837/
-- Saltzman & Munhall, Task Dynamics: https://doi.org/10.1207/s15326969eco0104_2
-- Patri et al. GEPPETO / control: https://pubmed.ncbi.nlm.nih.gov/26497359/
+Further details: [controller API](models.md), [research roadmap](research-roadmap.md), and [upstream VocalTractLab API](https://github.com/TUD-STKS/VocalTractLabBackend-dev).

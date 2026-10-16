@@ -3,7 +3,7 @@
  * so we must time out and terminate the Worker if either gets stuck.
  */
 export class BrowserVTLClient {
-  constructor({initTimeoutMs=60000,synthesisTimeoutMs=120000,onProgress=()=>{}}={}){
+  constructor({initTimeoutMs=60000,synthesisTimeoutMs=180000,onProgress=()=>{}}={}){
     this.worker=null;
     this.nextId=0;
     this.pending=new Map();
@@ -67,6 +67,8 @@ export class BrowserVTLClient {
     });
   }
   init(){return this.request('init');}
+  simulateOnly(model,phrase,cfg){return this.request('simulate-only',{model,phrase,cfg});}
+  simulate(model,phrase,cfg,options){return this.request('simulate',{model,phrase,cfg,options});}
   synthesize(frames,options){return this.request('synthesize',{frames,options});}
   close(){this.failAll('VTL worker closed');}
 }

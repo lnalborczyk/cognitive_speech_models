@@ -46,6 +46,7 @@ export class WasmVTL {
     this.tractToTube=this.api('vtlTractToTube','number',Array(7).fill('number'));
     this.synthBlock=this.api('vtlSynthBlock','number',['number','number','number','number','number','number']);
     this.svgExport=this.api('vtlExportTractSvg','number',['number','string']);
+    this.transferFunction=this.api('vtlGetTransferFunction','number',Array(5).fill('number'));
     this.ready=false;
   }
   alloc(bytes) {
