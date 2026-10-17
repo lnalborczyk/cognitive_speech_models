@@ -21,11 +21,17 @@ export function feedbackForce(sensory, cfg={}, n=0) {
         const error=(auditory[k]+shift-target[k])/FORMANT_SCALES[k];
         for(let j=0;j<n;j++) {
           const derivative=(J[k]?.[j]||0)/FORMANT_SCALES[k];
+          if(!Number.isFinite(derivative))continue;
           force[j]-=48*gain*error*derivative;
           norm[j]+=derivative*derivative;
         }
       }
-      for(let j=0;j<n;j++)force[j]/=(.35+norm[j]);
+      for(let j=0;j<n;j++){
+        force[j]/=(.35+norm[j]);
+        // Regularize local inverse corrections: resonance peaks can switch
+        // identities and must not drive unbounded motor accelerations.
+        if(cfg.sensorySafety!==false)force[j]=Math.max(-18,Math.min(18,force[j]));
+      }
     }
   }
   return force;
@@ -44,7 +50,7 @@ export function constrictionForce(sensory,n=0,{gain=65}={}){
 /** A peak finder for VTL's *physical tract transfer function*, not for a
  * guessed formant map. Null explicitly means an unresolvable resonance.
  */
-export function formantsFromSpectrum(magnitude, sampleRate){
+export function formantsFromSpectrum(magnitude, sampleRate, reference=null){
   const n=magnitude.length,step=sampleRate/n;
   const smoothed=magnitude.map((_,i)=>{
     let s=0,c=0;
@@ -65,9 +71,20 @@ export function formantsFromSpectrum(magnitude, sampleRate){
       peaks.push({f:(i+offset)*step,m:smoothed[i]});
     }
   }
-  const select=(lo,hi)=>peaks.filter(p=>p.f>=lo&&p.f<=hi).sort((a,b)=>b.m-a.m)[0]?.f??null;
-  const f1=select(200,1150);
-  const f2=select(Math.max(850,(f1||400)+350),3300);
-  const f3=select(Math.max(1700,(f2||1300)+400),4600);
+  const select=(lo,hi,k)=>{
+    const candidates=peaks.filter(p=>p.f>=lo&&p.f<=hi);
+    // Within a finite-difference evaluation, track the same spectral peak
+    // as the unperturbed VTL spectrum. If it disappears, mark it unresolved;
+    // never jump to a different peak and call that a derivative.
+    const anchor=reference?.[k];
+    if(Number.isFinite(anchor)){
+      const matches=candidates.filter(p=>Math.abs(p.f-anchor)<=180);
+      return matches.sort((a,b)=>Math.abs(a.f-anchor)-Math.abs(b.f-anchor))[0]?.f??null;
+    }
+    return candidates.sort((a,b)=>b.m-a.m)[0]?.f??null;
+  };
+  const f1=select(200,1150,0);
+  const f2=select(Math.max(850,(f1||400)+350),3300,1);
+  const f3=select(Math.max(1700,(f2||1300)+400),4600,2);
   return [f1,f2,f3];
 }

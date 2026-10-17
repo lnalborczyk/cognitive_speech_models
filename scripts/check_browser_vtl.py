@@ -69,6 +69,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifacts', type=Path, default=ROOT/'artifacts')
     parser.add_argument('--timeout', type=int, default=180_000)
+    parser.add_argument('--feedback-ablation', action='store_true',
+                        help='Also run controlled three-condition VTL feedback benchmark')
     parser.add_argument('--chromium-path', default='', help='Use a local Chromium binary instead of Playwright-managed Chromium')
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True)
@@ -132,6 +134,29 @@ def main():
                 if 'minimum n/a' in report:
                     raise AssertionError('No VTL tube aperture reported for /p/: '+report)
                 log['closureDiagnostic'] = report
+                if args.feedback_ablation:
+                    # These three runs synthesize actual VTL WAVs. We do not
+                    # assert that any condition sounds better: the reported
+                    # values are experimental diagnostics, not intelligibility.
+                    page.evaluate("""() => {
+                      document.querySelector('#model').value='diva';
+                      document.querySelector('#phrase').value='aia';
+                      document.querySelector('#noise').value='0';
+                      document.querySelector('#feedback').value='0.8';
+                    }""")
+                    page.locator('#feedback-test').click()
+                    page.wait_for_function("""() => {
+                      const state=document.querySelector('#feedback-test-report')?.dataset.state;
+                      return state==='done' || state==='error';
+                    }""",timeout=args.timeout)
+                    ablation = page.locator('#feedback-test-report').inner_text()
+                    if page.locator('#feedback-test-report').get_attribute('data-state') != 'done':
+                        raise AssertionError('VTL feedback ablation failed: '+ablation)
+                    if not all(label in ablation for label in
+                        ('Auditory feedback off','Legacy unguarded feedback','Stabilized feedback')):
+                        raise AssertionError('Missing conditions in VTL feedback ablation: '+ablation)
+                    log['feedbackAblation']=ablation
+                    print('Real VTL three-condition feedback ablation completed:', ablation,flush=True)
                 log['result'] = 'PASS'
                 print('Real VTL WebAssembly browser test PASSED:', state)
                 print('Reference-place stop diagnostic:', report)

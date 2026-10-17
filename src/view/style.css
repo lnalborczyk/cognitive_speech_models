@@ -23,3 +23,8 @@
 
 /* Keep supplementary experiments inside the narrow sidebar. */
 .rightcol canvas{display:block;max-width:100%;width:100%;height:auto;box-sizing:border-box;border-radius:6px;margin:.6rem 0}
+
+/* Keep compact comparison tables and in-panel WAV players responsive. */
+.comparison{overflow-x:auto;max-width:100%}
+#feedback-test-report audio{display:block;width:100%;max-width:100%;margin:5px 0 11px}
+#feedback-test-report table{min-width:530px}

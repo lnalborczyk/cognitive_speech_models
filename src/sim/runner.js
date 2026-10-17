@@ -6,7 +6,7 @@ export function mulberry32(seed){let v=seed>>>0;return ()=>{v+=0x6D2B79F5;let x=
  * backends. VTL natively maps them into speaker-specific physical tract units.
  */
 export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
-  const c={rate:1,overlap:.3,feedback:.75,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,seed:17,...cfg};
+  const c={rate:1,overlap:.3,feedback:.75,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,seed:17,sensorySafety:true,...cfg};
   if(!Number.isFinite(c.rate)||c.rate<=0)throw new Error('rate must be positive');
   const score=makeScore(phrase,speaker,c);
   const plant=makePlant(speaker,c.stiffness);
@@ -18,7 +18,7 @@ export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
     const t=n*dt;
     const act=activation(score,t);
     const target=blendedTarget(score,t);
-    const sensory=sensoryProvider?sensoryProvider({x:plant.x.slice(),target,phone:score.phones[act.chosen],context:score.gestures[act.chosen].context,step:n,t}):null;
+    const sensory=sensoryProvider?sensoryProvider({x:plant.x.slice(),target,phone:score.phones[act.chosen],context:score.gestures[act.chosen].context,step:n,t,cfg:c}):null;
     const result=controller.step({x:plant.x.slice(),v:plant.v.slice(),target,dt,t,sensory,
       weights:act.weight,selected:act.chosen,score,speaker});
     const command=result.u.map(u=>clamp(u,-75,75));

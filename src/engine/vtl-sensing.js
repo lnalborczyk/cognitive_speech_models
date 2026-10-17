@@ -27,14 +27,14 @@ export class VTLSensoryObserver {
       return {areas:b.doubles(a,b.ntube),lengths:b.doubles(l,b.ntube)};
     });
   }
-  formants(x){
+  formants(x,reference=null){
     const b=this.backend,N=1024;
     if(!b.transferFunction)return [null,null,null];
     try {return b.using([b.ntract*8,N*8,N*8],(p,mag,phase)=>{
       b.writeDoubles(p,b.denormalize(x));
       const code=b.transferFunction(p,N,0,mag,phase);
       if(code!==0)return [null,null,null];
-      return formantsFromSpectrum(b.doubles(mag,N),b.rate);
+      return formantsFromSpectrum(b.doubles(mag,N),b.rate,reference);
     });}catch(error){this.spectralWarnings++;return [null,null,null];}
   }
   site(phone,context='a'){
@@ -57,7 +57,7 @@ export class VTLSensoryObserver {
     const result={...selected,targetArea:Math.max(0,selected.area),vowelArea:this.area(vowel).areas[selected.index]};
     this.sites.set(key,result);return result;
   }
-  measure(x,target,phone,context){
+  measure(x,target,phone,context,{sensorySafety=true}={}){
     const n=x.length,stop=['p','t','k'].includes(phone),dims=this.indices[stop?phone:'vowel'];
     const actual=this.formants(x),targetFormants=this.formants(target);
     const jacobian=Array.from({length:3},()=>Array(n).fill(0));
@@ -68,9 +68,14 @@ export class VTLSensoryObserver {
       const displaced=x.slice(),delta=(x[j]+d<=1?d:-d);
       if(Math.abs(delta)<1e-5)continue;
       displaced[j]+=delta;
-      const shifted=this.formants(displaced);
-      for(let k=0;k<3;k++)if(Number.isFinite(shifted[k]))
-        jacobian[k][j]=(shifted[k]-actual[k])/delta;
+      const shifted=this.formants(displaced,sensorySafety?actual:null);
+      for(let k=0;k<3;k++)if(Number.isFinite(shifted[k])){
+        const jump=shifted[k]-actual[k];
+        // A >150 Hz shift from just 0.012 normalized units is more likely
+        // a formant-identity switch than a locally meaningful derivative.
+        if(sensorySafety && Math.abs(jump)>150)continue;
+        jacobian[k][j]=jump/delta;
+      }
     }
     let constriction=null;
     if(stop){
@@ -97,9 +102,9 @@ export class VTLSensoryObserver {
     return {auditory:actual,auditoryTarget:targetFormants,auditoryJacobian:jacobian,constriction,
       source:'VTL vtlGetTransferFunction + vtlTractToTube',phone,context};
   }
-  at({x,target,phone,context,step}){
+  at({x,target,phone,context,step,cfg={}}){
     if(!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone){
-      this.cached=this.measure(x,target,phone,context);
+      this.cached=this.measure(x,target,phone,context,{sensorySafety:cfg.sensorySafety!==false});
       this.lastPhone=phone;
     }
     return {...this.cached,time_s:step*.005};

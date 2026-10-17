@@ -1,3 +1,16 @@
+# Cognitive Speech Models v1.2.0 — Controlled sensory-feedback ablation
+
+- Correct a one-sided finite-difference boundary error in the live VTL sensory observer.
+- Track resonance peaks across small finite differences and suppress implausible peak-identity jumps.
+- Bound auditory-only motor corrections; allow a controlled legacy mode for comparisons.
+- Make Task Dynamics respect the configured auditory gain.
+- Add a three-condition, same-seed, real-VTL WAV benchmark with playback and CSV.
+- Add an opt-in GitHub Actions Chromium experiment (`feedback_ablation`) and public-facing protocol.
+
+**Scientific status:** This release has numerical/source and layout tests. It has NOT been tested against a real VTL WebAssembly binary in this environment. Feedback gains and safety thresholds are heuristic and must be evaluated on actual audio and articulatory data. See `docs/synthesis-benchmark.md`.
+
+---
+
 # Cognitive Speech Models v1.1.0
 
 This update improves the interpretability of comparisons without claiming that

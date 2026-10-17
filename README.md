@@ -14,7 +14,7 @@ The public application runs entirely in the browser using WebAssembly. Visitors 
 2. Choose a model and phonetic sequence; vowel sequences and context-dependent `/p/`, `/t/` and `/k/` sequences are available with the bundled JD3 speaker.
 3. Change speech rate, gestural overlap, feedback gain/delay, an auditory F1 feedback shift, motor noise or articulator stiffness.
 4. Run the simulation, then select **Play speech + animation**. The anatomical SVG frames and acoustic waveform are produced by the same VTL trajectory.
-5. Examine articulatory trajectories, VTL tube area, online transfer-function resonance estimates (F1–F3), the waveform spectrogram, and reference-place-specific consonant closures. Use the time scrubber or export WAV/CSV data.
+5. Examine articulatory trajectories, VTL tube area, online resonance estimates (F1–F3), spectrogram, and place-specific closures. The **Feedback ablation (VTL)** panel runs matched auditory-off, unguarded, and guarded-feedback syntheses and lets visitors listen to and export their measurements.
 
 **Browser vs local native mode:** In the public WebAssembly version, the controller receives measured VTL acoustic and constriction variables **during trajectory generation**. The optional Python/native VTL route currently uses open-loop synthesis after a proprioceptive-only motor simulation. Auditory feedback/perturbation controls are disabled in that mode.
 
@@ -89,6 +89,12 @@ python3 -m http.server 5173
 ```
 
 To use an already installed native VTL shared library and speaker, run `python3 scripts/launch.py` and open the URL it prints. The GitHub Actions workflow compiles the browser VTL backend, checks the acoustic/geometry path in Chromium, and publishes the static application only after those checks pass. See [deployment](docs/deployment.md) and [validation](docs/validation.md).
+
+## Auditory-feedback ablation and reproducibility
+
+Use **Feedback ablation (VTL)** to compare three conditions for the selected controller and utterance: zero configured auditory gain, legacy unguarded resonance feedback, and bounded resonance-feedback corrections. The simulator holds phonetic goals, motor plant, random seed, speech rate and the other controls fixed across conditions, and synthesizes each WAV through the same browser VocalTractLab engine. Auditory perturbations are disabled for the ablation.
+
+Listen to the three rendered WAVs and export the CSV. Its tracking RMS, audio RMS, clipping fraction, estimated-resonance discontinuities, and maximum motor command are **diagnostics, not intelligibility or human-model fit scores**. This is not an official VocalTractLab gestural-score reference condition. For a reproducible CI run, start GitHub Actions → *Build VTL WebAssembly and deploy GitHub Pages* → *Run workflow* with `feedback_ablation` enabled. See [benchmark protocol](docs/synthesis-benchmark.md).
 
 ## Scientific limitations and priorities
 

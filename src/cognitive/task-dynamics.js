@@ -13,7 +13,7 @@ export class TaskDynamics {
       return {u,planning:s.weights.slice(),selected:s.selected,details:'Offline surrogate (no VTL sensor)'};
     }
     const n=s.x.length,goal=s.sensory.constriction;
-    const task=goal?constrictionForce(s.sensory,n,{gain:55}):feedbackForce(s.sensory,{feedback:.65,perturbation:0},n);
+    const task=goal?constrictionForce(s.sensory,n,{gain:55}):feedbackForce(s.sensory,{...this.cfg,perturbation:0},n);
     const u=task.map((value,j)=>value+25*(s.target[j]-s.x[j])-13*s.v[j]);
     return {u,planning:s.weights.slice(),selected:s.selected,
       details:goal?'VTL constriction-area task with finite-difference Jacobian':'VTL vowel resonance task'};

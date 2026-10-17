@@ -8,12 +8,13 @@ import {decodeWavBase64,spectrogram} from './sim/diagnostics.js';
 import {plotSpectrogram} from './view/plot.js';
 import {analyzeStops,CLOSURE_THRESHOLD_CM2} from './sim/closure-analysis.js';
 import {buildClosureDiagnostics} from './sim/closure-presentation.js';
+import {feedbackConditions,feedbackSummary,feedbackCsv} from './sim/feedback-benchmark.js';
 
 const $=id=>document.getElementById(id);
-const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/sim/closure-presentation.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
+const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/sim/closure-presentation.js','src/sim/feedback-benchmark.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
 const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,.8,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let native=null,wasm=null,speaker=null,simulation=null,nativeResult=null;
-let acousticSpec=null,constrictionData=[],benchmarkRows=[];
+let acousticSpec=null,constrictionData=[],benchmarkRows=[],feedbackRows=[],feedbackAudioURLs=[];
 const wasmClient=new BrowserVTLClient({onProgress: phase => {
   $('engine-status').textContent='Loading browser VTL: '+phase;
   console.info('[VTL]',phase);
@@ -36,7 +37,7 @@ function requireVTL(){
 }
 function setConnected(ready){
  for(const id of specs.map(([key])=>key))$(id).disabled=!ready;
- for(const id of ['run','play','compare','compare-vtl','bench-csv','all-csv','download','model','phrase','geometry-fps','scrub','experiment'])$(id).disabled=!ready;
+ for(const id of ['run','play','compare','compare-vtl','bench-csv','all-csv','download','model','phrase','geometry-fps','scrub','experiment','feedback-test'])$(id).disabled=!ready;
  $('engine').disabled=!ready;
  $('audio').disabled=!ready||!nativeResult;
  $('wav').disabled=!ready||!nativeResult;
@@ -60,7 +61,7 @@ async function connect(){
      const response=await fetch('/api/status',{cache:'no-store'});
      if(!response.ok)throw Error(`No VTL API on this web origin (HTTP ${response.status})`);
      const status=await response.json();
-     if(status.appVersion!=='1.1.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
+     if(status.appVersion!=='1.2.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
      if(!status.available)throw Error(status.error||'Native VTL is unavailable');
      const res=await fetch('/api/speaker',{cache:'no-store'});
      if(!res.ok)throw Error(`Native VTL speaker unavailable (HTTP ${res.status})`);
@@ -242,6 +243,41 @@ async function comparePhysical(){
  finally{button.disabled=false;}
 }
 
+async function runFeedbackBenchmark(){
+  const button=$('feedback-test'),report=$('feedback-test-report');
+  if(speaker?.kind!=='wasm'){
+    report.dataset.state='error';
+    report.textContent='This benchmark requires browser VTL WebAssembly.';
+    return;
+  }
+  const cfg=config(),model=$('model').value,phrase=$('phrase').value;
+  const rows=[];feedbackRows=[];
+  for(const u of feedbackAudioURLs)URL.revokeObjectURL(u);
+  feedbackAudioURLs=[];
+  button.disabled=true;$('feedback-test-csv').disabled=true;
+  report.dataset.state='running';
+  try{
+    for(const condition of feedbackConditions(cfg)){
+      report.textContent=`Synthesizing ${condition.label} through VTL (${rows.length+1}/3)…`;
+      const result=await wasmClient.simulate(model,phrase,condition.cfg,{geometry:false,geometryFps:8});
+      const bytes=Uint8Array.from(atob(result.output.audioBase64),c=>c.charCodeAt(0));
+      const audioURL=URL.createObjectURL(new Blob([bytes],{type:'audio/wav'}));
+      feedbackAudioURLs.push(audioURL);
+      rows.push({id:condition.id,condition:condition.label,audioURL,
+        ...feedbackSummary(result.simulation,result.output)});
+    }
+    feedbackRows=rows;
+    const cols=[['trackingRms',4],['audioRms',4],['clippingPercent',2],['formantJumps',0],['commandPeak',2]];
+    const header='<tr><th>Condition</th><th>Target RMS</th><th>Audio RMS</th><th>Clip %</th><th>Formant jumps</th><th>Peak command</th></tr>';
+    report.innerHTML='<table><thead>'+header+'</thead><tbody>'+rows.map(r=>'<tr><td>'+r.condition+'</td>'+cols.map(([key,n])=>'<td>'+r[key].toFixed(n)+'</td>').join('')+'</tr>').join('')+'</tbody></table>'+
+      rows.map(r=>'<div class="mini"><label>'+r.condition+' <audio controls preload="none" src="'+r.audioURL+'"></audio></label></div>').join('')+
+      '<p class="mini">Listen to the three actual VTL waveforms. Target tracking, audio amplitude and estimator discontinuities are diagnostics, not speech intelligibility scores. No official VTL gestural-score or human reference is used.</p>';
+    report.dataset.state='done';
+    $('feedback-test-csv').disabled=false;
+  }catch(e){report.dataset.state='error';report.textContent='Feedback test failed: '+e.message;}
+  finally{button.disabled=false;}
+}
+
 function duration(){return simulation?.frames.at(-1)?.t||0;}
 function draw(t){
  if(!simulation)return;
@@ -377,6 +413,8 @@ $('engine').addEventListener('change',()=>{const e=$('engine').value;speaker=e==
 $('compare').onclick=()=>{void compare().catch(e=>message(e.message))};
 $('compare-vtl').onclick=()=>{void comparePhysical()};
 $('experiment').onclick=()=>{void perturbationExperiment()};
+$('feedback-test').onclick=()=>{void runFeedbackBenchmark()};
+$('feedback-test-csv').onclick=()=>{if(feedbackRows.length)fileDownload('vtl-feedback-ablation.csv',feedbackCsv(feedbackRows,{model:$('model').value,phrase:$('phrase').value,seed:config().seed}),'text/csv')};
 $('bench-csv').onclick=()=>{if(benchmarkRows.length){const cols=['model','trackingRms','effort','minOralArea','closures','stops','maxClosureHold_s','audioRms'];fileDownload('vtl-controller-benchmark.csv',[cols.join(','),...benchmarkRows.map(r=>cols.map(k=>r[k]??'').join(','))].join('\n'),'text/csv')}};
 $('download').onclick=()=>{if(simulation&&speaker)fileDownload(`cognitive_speech_models-${simulation.model}.csv`,csvOutput(simulation,speaker),'text/csv')};
 $('all-csv').onclick=()=>{void compare().then(sims=>{const csv=sims.map((s,i)=>csvOutput(s,speaker).split('\n').slice(i?1:0).join('\n')).join('\n');fileDownload('cognitive_speech_models-comparison.csv',csv,'text/csv')}).catch(e=>message(e.message))};
