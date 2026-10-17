@@ -66,7 +66,7 @@ export class VTLSensoryObserver {
     // Constrained to the articulators relevant to the active task.
     if(actual.every(Number.isFinite))for(const j of dims){
       const displaced=x.slice(),delta=(x[j]+d<=1?d:-d);
-      if(delta<1e-5)continue;
+      if(Math.abs(delta)<1e-5)continue;
       displaced[j]+=delta;
       const shifted=this.formants(displaced);
       for(let k=0;k<3;k++)if(Number.isFinite(shifted[k]))
@@ -80,7 +80,7 @@ export class VTLSensoryObserver {
         const gradient=Array(n).fill(0);
         for(const j of dims){
           const displaced=x.slice(),delta=(x[j]+d<=1?d:-d);
-          if(delta<1e-5)continue;
+          if(Math.abs(delta)<1e-5)continue;
           displaced[j]+=delta;
           gradient[j]=(this.area(displaced).areas[place.index]-area)/delta;
         }
