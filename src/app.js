@@ -6,10 +6,11 @@ import {NativeTractAnimation,nearestTimestampIndex} from './view/native-animatio
 import {BrowserVTLClient} from './engine/wasm-client.js';
 import {decodeWavBase64,spectrogram} from './sim/diagnostics.js';
 import {plotSpectrogram} from './view/plot.js';
-import {analyzeStops,placeSpecificSeries,CLOSURE_THRESHOLD_CM2} from './sim/closure-analysis.js';
+import {analyzeStops,CLOSURE_THRESHOLD_CM2} from './sim/closure-analysis.js';
+import {buildClosureDiagnostics} from './sim/closure-presentation.js';
 
 const $=id=>document.getElementById(id);
-const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
+const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/sim/closure-presentation.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/godiva.js','src/cognitive/geppeto-ofc.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
 const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,.8,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let native=null,wasm=null,speaker=null,simulation=null,nativeResult=null;
 let acousticSpec=null,constrictionData=[],benchmarkRows=[];
@@ -316,16 +317,9 @@ async function run(){
    nativeResult=response;nativePlayer.load(response.svgs||[]);renderNames();
    try{acousticSpec=spectrogram(decodeWavBase64(response.audioBase64));}
    catch(err){acousticSpec=null;console.warn('VTL spectrogram unavailable:',err);}
-   constrictionData=constrictionSeries(response.geometry||[]);
-   const stops=assessStops(simulation,response.geometry||[]);
-    const report=stops.map(stop=>{
-      const place=stop.sitePosition===null?'unknown':`${(100*stop.sitePosition).toFixed(0)}% of tract`;
-      const min=stop.minimumArea_cm2===null?'n/a':stop.minimumArea_cm2.toFixed(3)+' cm²';
-      const hold=stop.closureDuration_s===null?'n/a':Math.round(1000*stop.closureDuration_s)+' ms';
-      const release=stop.releaseTime_s===null?'not detected':stop.releaseTime_s.toFixed(3)+' s';
-      return `/${stop.phone}/ at ${place}: minimum ${min}; longest hold ${hold}; release ${release}; ${stop.status}`;
-    });
-   $('closure-report').textContent=report.length?report.join(' · '):'Vowel-only sequence; no stop closure targets.';
+   const closure=buildClosureDiagnostics(simulation,response);
+   constrictionData=closure.series;
+   $('closure-report').textContent=closure.report;
    $('audio').disabled=false;$('wav').disabled=false;
    $('geometry-label').textContent=`${response.svgs.length} VTL anatomical frames (${response.geometryFps} fps target)`;
    $('area-label').textContent=`VTL · ${speaker.tubeSections} sections`;
