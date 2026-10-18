@@ -38,7 +38,7 @@ test('gestures overlap smoothly',()=>{
  assert.ok(a.weight[0]>0);assert.ok(a.weight[1]>0);
 });
 test('CSV contains actual model and source parameter dimension',()=>{
- const s=simulate('godiva','aia',sp),csv=csvOutput(s,sp);
+ const s=simulate('diva','aia',sp),csv=csvOutput(s,sp);
  assert.ok(csv.startsWith('model,t_s,phone,selected,JX'));
  assert.equal(csv.trim().split('\n').length,s.frames.length+1);
 });

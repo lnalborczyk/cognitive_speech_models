@@ -67,6 +67,7 @@ export class BrowserVTLClient {
     });
   }
   init(){return this.request('init');}
+  calibrate(){return this.request('calibrate');}
   simulateOnly(model,phrase,cfg){return this.request('simulate-only',{model,phrase,cfg});}
   simulate(model,phrase,cfg,options){return this.request('simulate',{model,phrase,cfg,options});}
   synthesize(frames,options){return this.request('synthesize',{frames,options});}

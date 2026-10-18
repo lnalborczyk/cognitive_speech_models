@@ -1,6 +1,6 @@
 /** Shared normalized command integration for all VTL-driven controllers.
  * This is a deliberately reduced-order mass-spring command filter, NOT
- * VocalTractLab biomechanics, GEPPETO finite-element muscle dynamics, or a
+ * VocalTractLab muscle biomechanics, or a
  * standalone articulatory/acoustic approximation. Its trajectories require
  * a successfully initialized VTL speaker for mapping into tract parameters.
  */

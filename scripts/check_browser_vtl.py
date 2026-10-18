@@ -118,6 +118,24 @@ def main():
                     raise AssertionError('No rendered VTL SVG anatomy')
                 if not any('vtl.wasm' in item['url'] and item['status']==200 for item in log['network']):
                     raise AssertionError('Compiled VTL WASM binary was not successfully fetched')
+                # Verify that the online speaker's canonical vowel targets
+                # can be measured twice consistently with the same VTL model.
+                page.locator('#calibration-test').click()
+                page.wait_for_function("""() => {
+                  const element=document.querySelector('#calibration-report');
+                  return element?.querySelectorAll('tbody tr').length===3 ||
+                    (element?.textContent||'').startsWith('Calibration failed:');
+                }""",timeout=args.timeout)
+                calibration=page.locator('#calibration-report').inner_text()
+                if 'Calibration failed:' in calibration:
+                    raise AssertionError('VTL vowel calibration failed: '+calibration)
+                if 'Pass' not in calibration:
+                    raise AssertionError('No numerically repeatable VTL vowel reference: '+calibration)
+                log['vowelCalibration']=calibration
+                # Confirm that simplification really exposes only two controllers.
+                options=page.locator('#model option').evaluate_all('(xs)=>xs.map(x=>x.value)')
+                if options != ['diva','td']:
+                    raise AssertionError('Unexpected public controller list: '+repr(options))
                 # Integration gate for the actual JD3 consonant target and
                 # high-resolution VTL tube diagnostics (not phoneme accuracy).
                 page.locator('#phrase').select_option('apa')

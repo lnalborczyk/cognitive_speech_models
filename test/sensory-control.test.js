@@ -3,9 +3,8 @@ import assert from 'node:assert/strict';
 import {feedbackForce,constrictionForce,formantsFromSpectrum} from '../src/motor/sensory-control.js';
 import {VTLSensoryObserver} from '../src/engine/vtl-sensing.js';
 import {CONTROLLERS} from '../src/cognitive/registry.js';
-test('GEPPETO-OFC replaces original GEPPETO placeholder',()=>{
- assert.equal(CONTROLLERS.geppeto,undefined);
- assert.ok(CONTROLLERS['geppeto-ofc']);
+test('only DIVA and Task Dynamics are exposed',()=>{
+ assert.deepEqual(Object.keys(CONTROLLERS),['diva','td']);
 });
 test('VTL spectral peaks used for formants',()=>{
  const n=2048,rate=44100;

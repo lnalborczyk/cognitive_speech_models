@@ -13,6 +13,7 @@ export class VTLSensoryObserver {
   constructor(backend,{intervalSteps=8}={}){
     this.backend=backend;this.intervalSteps=intervalSteps;
     this.cached=null;this.lastPhone='';this.sites=new Map();this.spectralWarnings=0;
+    this.lastVowelObservation=null;this.calibratedVowels=new Map();this.sensoryUpdates=0;
     this.indices={};
     for(const [kind,parameters] of Object.entries(PARAMS)) {
       this.indices[kind]=parameters.map(name=>backend.tract.names.indexOf(name)).filter(i=>i>=0);
@@ -57,9 +58,43 @@ export class VTLSensoryObserver {
     const result={...selected,targetArea:Math.max(0,selected.area),vowelArea:this.area(vowel).areas[selected.index]};
     this.sites.set(key,result);return result;
   }
+  /** F1–F3 of the actual VTL speaker's canonical vowel tract shapes.
+   * These are model-specific acoustic goals, not generic human formant tables.
+   */
+  calibrateVowels(){
+    for(const phone of ['a','i','u']){
+      const shape=this.backend.shapes?.[phone];
+      if(shape && !this.calibratedVowels.has(phone))
+        this.calibratedVowels.set(phone,this.formants(shape));
+    }
+    return Object.fromEntries(this.calibratedVowels);
+  }
+  calibrationReport(){
+    this.calibrateVowels();
+    return [...this.calibratedVowels].map(([phone,target])=>{
+      const shape=this.backend.shapes[phone];
+      const measurement=this.formants(shape,target);
+      const errors=target.map((f,k)=>Number.isFinite(f)&&Number.isFinite(measurement[k])?measurement[k]-f:null);
+      return {phone,formantsHz:target,errorsHz:errors,
+        resolved:errors.filter(Number.isFinite).length,
+        zeroError:errors.filter(Number.isFinite).length>=2 &&
+          errors.every(e=>e===null||Math.abs(e)<1)};
+    });
+  }
   measure(x,target,phone,context,{sensorySafety=true}={}){
     const n=x.length,stop=['p','t','k'].includes(phone),dims=this.indices[stop?phone:'vowel'];
-    const actual=this.formants(x),targetFormants=this.formants(target);
+    // Track identities across observer updates, not just within Jacobian probes.
+    // Reset across phoneme switches rather than forcing /a/ peaks into /i/.
+    const previous=sensorySafety && this.lastVowelObservation?.phone===phone
+      ?this.lastVowelObservation.formants:null;
+    const actual=this.formants(x,previous);
+    // Acoustic goal is measured from the *same VTL tract configuration* as
+    // the feedforward motor target, including between blended gestures.
+    const targetFormants=this.formants(target,sensorySafety?actual:null);
+    if(!stop && sensorySafety && actual.some(Number.isFinite)){
+      this.lastVowelObservation={phone,formants:actual};
+    }else if(stop)this.lastVowelObservation=null;
+    this.sensoryUpdates++;
     const jacobian=Array.from({length:3},()=>Array(n).fill(0));
     const d=.012;
     // Forward finite differences, each measured through VTL's transfer function.
@@ -100,7 +135,8 @@ export class VTLSensoryObserver {
       for(const row of jacobian)row.fill(0);
     }
     return {auditory:actual,auditoryTarget:targetFormants,auditoryJacobian:jacobian,constriction,
-      source:'VTL vtlGetTransferFunction + vtlTractToTube',phone,context};
+      source:'VTL vtlGetTransferFunction + vtlTractToTube',phone,context,
+      calibrated:true,validAuditoryBands:actual.filter(Number.isFinite).length};
   }
   at({x,target,phone,context,step,cfg={}}){
     if(!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone){

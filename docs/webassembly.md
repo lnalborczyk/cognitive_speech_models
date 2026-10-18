@@ -59,7 +59,7 @@ python3 scripts/launch.py
 ## Architecture
 
 ```text
-src/cognitive/{diva,godiva,geppeto-ofc,task-dynamics}.js
+src/cognitive/{diva,task-dynamics}.js
                   |
 src/sim/runner.js (same normalized trajectories)
                   |
