@@ -65,6 +65,50 @@ def snapshot(page):
     }''')
 
 
+def validate_vowel_calibration(rows):
+    """Check browser calibration as a *smoke test*, not a phonetic gold standard.
+
+    Each row is [vowel, measured F1/F2/F3, repeat errors, status].
+    An unresolved formant is a legitimate diagnostic finding; it must not
+    prevent a functioning VTL synthesizer from being deployed.
+    """
+    expected = {'/a/', '/i/', '/u/'}
+    if len(rows) != 3 or {row[0] for row in rows if row} != expected:
+        raise AssertionError(f'Expected calibration rows for /a/, /i/, /u/: {rows!r}')
+
+    repeatable = 0
+    incomplete = []
+    for row in rows:
+        if len(row) != 4:
+            raise AssertionError(f'Malformed vowel calibration row: {row!r}')
+        vowel, formants, errors, status = [value.strip() for value in row]
+        measured = [value.strip() for value in formants.split(' / ')]
+        if len(measured) != 3:
+            raise AssertionError(f'Expected three reported formant fields for {vowel}: {row!r}')
+        if status == 'Repeatable':
+            if 'unresolved' in formants.lower():
+                raise AssertionError(f'{vowel} was marked Repeatable despite missing a formant')
+            if any(value == '—' for value in errors.split(' / ')):
+                raise AssertionError(f'{vowel} was marked Repeatable despite missing an error')
+            repeatable += 1
+        elif status.startswith('Incomplete (') and status.endswith('/3)'):
+            try:
+                count = int(status[len('Incomplete ('):-len('/3)')])
+            except ValueError as exc:
+                raise AssertionError(f'Invalid incomplete status for {vowel}: {status}') from exc
+            if count not in (1, 2) or sum(x != 'unresolved' for x in measured) != count:
+                raise AssertionError(f'Incorrect resolved formant count for {vowel}: {row!r}')
+            incomplete.append(f'{vowel}: {status}')
+        elif status == 'Inconsistent':
+            raise AssertionError(f'{vowel} produced non-repeatable formant measurements: {row!r}')
+        else:
+            raise AssertionError(f'Unexpected vowel calibration status for {vowel}: {status!r}')
+
+    if repeatable == 0:
+        raise AssertionError('No fully resolved, repeatable vowel in VTL calibration')
+    return incomplete
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifacts', type=Path, default=ROOT/'artifacts')
@@ -129,9 +173,16 @@ def main():
                 calibration=page.locator('#calibration-report').inner_text()
                 if 'Calibration failed:' in calibration:
                     raise AssertionError('VTL vowel calibration failed: '+calibration)
-                if 'Pass' not in calibration:
-                    raise AssertionError('No numerically repeatable VTL vowel reference: '+calibration)
-                log['vowelCalibration']=calibration
+                calibration_rows = page.locator('#calibration-report tbody tr').evaluate_all(
+                    "rows => rows.map(row => Array.from(row.querySelectorAll('td'), "
+                    "cell => cell.textContent.trim()))")
+                calibration_warnings = validate_vowel_calibration(calibration_rows)
+                log['vowelCalibration'] = calibration
+                log['vowelCalibrationRows'] = calibration_rows
+                if calibration_warnings:
+                    log['vowelCalibrationWarnings'] = calibration_warnings
+                    print('VTL vowel calibration incomplete (not a deployment failure): '
+                          + ', '.join(calibration_warnings), flush=True)
                 # Confirm that simplification really exposes only two controllers.
                 options=page.locator('#model option').evaluate_all('(xs)=>xs.map(x=>x.value)')
                 if options != ['diva','td']:
