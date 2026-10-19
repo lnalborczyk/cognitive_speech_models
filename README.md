@@ -20,7 +20,7 @@ Open the [online application](https://lnalborczyk.github.io/cognitive_speech_mod
 **Experiments:**
 
 1. **VTL vowel reference check** measures F1–F3 from the current speaker's /a/, /i/, /u/ shapes and tests repeatability, not human phonetic accuracy.
-2. **Gain/delay sweep** compares unperturbed tracking at gains 0–0.4 with two delays, holding other parameters and the seed fixed.
+2. **Gain/delay sweep** holds proprioceptive latency constant while comparing unperturbed tracking at gains 0–0.4 with two delays, holding other parameters and the seed fixed.
 3. **Auditory F1 shift** compares paired trajectories under the same random seed and reports the direction and size of the simulated compensatory response.
 4. **Feedback ablation** exports three actual VTL waveforms and CSV diagnostics for auditory-off, legacy, and stabilized feedback.
 5. **Controller comparison** evaluates DIVA and Task Dynamics using identical settings and physical VTL synthesis.
@@ -60,3 +60,7 @@ Pull requests should include numerical tests and clearly distinguish changes to 
 - [Saltzman & Munhall: Task Dynamics](https://doi.org/10.1207/s15326969eco0104_2)
 
 This software is an experimental visualization and comparison tool, not a validated numerical reproduction of DIVA or Task Dynamics. See the repository's `LICENSE` for licensing terms.
+
+## Feedback validation protocol
+
+See [auditory-feedback validation protocol](docs/feedback-validation.md) for reproducible speaker calibration, gain/delay sweeps, bidirectional F1 perturbations, time-course CSV export, and an analysis script.

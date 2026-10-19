@@ -33,7 +33,46 @@ export function pairedF1Response(baseline,altered,{onsetMs=300,shiftHz=150}={}){
     motorDivergenceRms:nStates?Math.sqrt(stateSum/nStates):0,validSamples:n};
 }
 export function sweepCsv(rows){
-  const cols=['controller','phrase','feedback','delay','trackingRms','effort','meanDeltaF1Hz',
-    'compensationHz','compensationFraction','validSamples'];
+  // This is an unperturbed sweep. Compensation metrics belong to the paired
+  // perturbation export, and cannot be estimated from these runs.
+  const cols=['controller','phrase','feedback','delay','trackingRms','effort'];
   return [cols.join(','),...rows.map(row=>cols.map(c=>row[c]??'').join(','))].join('\n')+'\n';
+}
+
+/** Paired time course for auditing auditory-perturbation experiments.
+ * Values are VTL transfer-function resonance *estimates*, not LPC measurements
+ * on emitted sound. Each 5-ms plant frame repeats the observer's most recent
+ * estimate until the next ~40-ms observer update. `observerUpdate` is a
+ * nominal sampling flag (with an extra flag on phoneme switches), so use only
+ * flagged rows when summarizing acoustic responses, not every 5-ms row as an
+ * independent observation. Do not use these time points as independent trials.
+ */
+export function pairedF1Csv(baseline,altered,{
+  onsetMs=300,shiftHz=150,model='',phrase='',seed='',feedback='',delayMs=''
+}={}){
+  const a=baseline?.frames,b=altered?.frames;
+  if(!Array.isArray(a)||!a.length||!Array.isArray(b)||a.length!==b.length)
+    throw Error('Paired simulations require nonempty, identical time grids');
+  const cols=['time_s','phone','observer_update','onset_s','shift_hz',
+    'baseline_F1_Hz','shifted_F1_Hz','target_F1_Hz','baseline_error_Hz',
+    'shifted_error_unperturbed_Hz','delta_produced_F1_Hz','compensation_Hz',
+    'motor_divergence_RMS','model','phrase','seed','feedback_gain','delay_ms'];
+  const fmt=x=>Number.isFinite(x)?String(x):'';
+  const rows=a.map((f,i)=>{
+    const g=b[i];
+    if(!Number.isFinite(f.t)||Math.abs(f.t-g.t)>1e-5||f.x.length!==g.x.length)
+      throw Error('Paired time grids or articulatory dimensions differ');
+    const f1=f.sensory?.auditory?.[0],other=g.sensory?.auditory?.[0];
+    const target=f.sensory?.auditoryTarget?.[0];
+    const d=Number.isFinite(f1)&&Number.isFinite(other)?other-f1:null;
+    const motor=Math.sqrt(f.x.reduce((sum,x,j)=>sum+(x-g.x[j])**2,0)/f.x.length);
+    const values=[fmt(f.t),f.phone||'',(i%8===0||f.phone!==a[i-1]?.phone)?'1':'0',
+      fmt(onsetMs/1000),fmt(shiftHz),fmt(f1),fmt(other),fmt(target),
+      fmt(Number.isFinite(f1)&&Number.isFinite(target)?f1-target:null),
+      fmt(Number.isFinite(other)&&Number.isFinite(target)?other-target:null),
+      fmt(d),fmt(d===null?null:-Math.sign(shiftHz)*d),fmt(motor),
+      String(model),String(phrase),fmt(seed),fmt(feedback),fmt(delayMs)];
+    return values.join(',');
+  });
+  return [cols.join(','),...rows].join('\n')+'\n';
 }

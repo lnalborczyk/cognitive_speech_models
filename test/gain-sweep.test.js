@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GAIN_GRID,DELAY_GRID_MS,sweepConditions,pairedF1Response,sweepCsv} from '../src/sim/gain-sweep.js';
+import {GAIN_GRID,DELAY_GRID_MS,sweepConditions,pairedF1Response,pairedF1Csv,sweepCsv} from '../src/sim/gain-sweep.js';
 
 test('gain/delay grid contains zero gain and reproducible conditions',()=>{
   assert.deepEqual(GAIN_GRID,[0,.1,.2,.4]);
@@ -32,8 +32,33 @@ test('paired results reject sampling grid mismatch',()=>{
  const x=sampleFrames(),y=sampleFrames();y.frames[4].t+=.02;
  assert.throws(()=>pairedF1Response(x,y),/grid/);
 });
-test('sweep CSV exports target and compensation columns',()=>{
+test('unperturbed sweep CSV exports only measured tracking and effort fields',()=>{
  const text=sweepCsv([{controller:'diva',phrase:'aia',feedback:.2,delay:40,trackingRms:.1,
   effort:42,meanDeltaF1Hz:-30,compensationHz:30,compensationFraction:.2,validSamples:10}]);
- assert.match(text,/compensationHz/);assert.match(text,/diva,aia,0.2,40/);
+ assert.doesNotMatch(text,/compensationHz|validSamples|meanDeltaF1Hz/);assert.match(text,/diva,aia,0.2,40/);
+});
+
+test('paired F1 export contains actual, target and response with explicit sample flag',()=>{
+ const a={frames:[
+  {t:0,phone:'a',x:[.5,.5],sensory:{auditory:[600,1500,2600],auditoryTarget:[600,1500,2600]}},
+  {t:.005,phone:'a',x:[.5,.5],sensory:{auditory:[600,1500,2600],auditoryTarget:[600,1500,2600]}}
+ ]};
+ const b={frames:[
+  {t:0,phone:'a',x:[.5,.5],sensory:{auditory:[600,1500,2600]}},
+  {t:.005,phone:'a',x:[.6,.5],sensory:{auditory:[570,1500,2600]}}
+ ]};
+ const text=pairedF1Csv(a,b,{shiftHz:150,onsetMs:0,model:'diva',phrase:'aia',seed:17,feedback:.2,delayMs:40});
+ const lines=text.trim().split('\n');
+ assert.equal(lines.length,3);
+ const columns=lines[0].split(',');
+ const data=lines[2].split(',');
+ assert.equal(data[columns.indexOf('delta_produced_F1_Hz')],'-30');
+ assert.equal(data[columns.indexOf('compensation_Hz')],'30');
+ assert.equal(data[columns.indexOf('baseline_error_Hz')],'0');
+ assert.equal(data[columns.indexOf('observer_update')],'0');
+ assert.ok(Math.abs(Number(data[columns.indexOf('motor_divergence_RMS')])-Math.sqrt(.01/2))<1e-12);
+});
+test('paired F1 export rejects mismatched temporal grids',()=>{
+ const a=sampleFrames();const b=sampleFrames();b.frames[5].t=.99;
+ assert.throws(()=>pairedF1Csv(a,b),/grid/);
 });

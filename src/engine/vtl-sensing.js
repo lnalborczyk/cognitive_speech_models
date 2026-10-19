@@ -77,8 +77,8 @@ export class VTLSensoryObserver {
       const errors=target.map((f,k)=>Number.isFinite(f)&&Number.isFinite(measurement[k])?measurement[k]-f:null);
       return {phone,formantsHz:target,errorsHz:errors,
         resolved:errors.filter(Number.isFinite).length,
-        zeroError:errors.filter(Number.isFinite).length>=2 &&
-          errors.every(e=>e===null||Math.abs(e)<1)};
+        zeroError:errors.filter(Number.isFinite).length===3 &&
+          errors.every(e=>Number.isFinite(e)&&Math.abs(e)<1)};
     });
   }
   measure(x,target,phone,context,{sensorySafety=true}={}){

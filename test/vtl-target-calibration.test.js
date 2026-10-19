@@ -43,3 +43,9 @@ test('unresolved vowels are not incorrectly classified as calibrated',()=>{
  const {observer}=setup();observer.formants=()=>[null,null,null];
  assert.ok(observer.calibrationReport().every(r=>!r.zeroError));
 });
+
+test('missing F1 must not pass even when F2 and F3 repeat exactly',()=>{
+ const {observer}=setup(); observer.formants=()=>[null,3100,4200];
+ const records=observer.calibrationReport();
+ assert.ok(records.every(r=>r.resolved===2 && r.zeroError===false));
+});

@@ -8,20 +8,28 @@ export class DIVA {
   step(s){
     const {x,v,target,t}=s,c=this.cfg;
     this.history.push({t,x:x.slice(),sensory:s.sensory||null});
-    const latency=Number(c.delay||0)/1000;
-    let delayed=this.history[0];
-    for(let i=this.history.length-1;i>=0;i--){
-      if(this.history[i].t<=t-latency+1e-9){delayed=this.history[i];break;}
-    }
-    const sensory=delayed.sensory;
-    const aud=feedbackForce(sensory,c,x.length);
+    // The exposed delay parameter manipulates *auditory* feedback only.
+    // Proprioception uses its own fixed latency, so zero auditory gain is a
+    // valid negative control in the gain/delay sweep.
+    const auditoryLatency=Math.max(0,Number(c.delay??0))/1000;
+    const proprioLatency=Math.max(0,Number(c.somatosensoryDelayMs??40))/1000;
+    const atLatency=latency=>{
+      for(let i=this.history.length-1;i>=0;i--){
+        if(this.history[i].t<=t-latency+1e-9)return this.history[i];
+      }
+      return this.history[0];
+    };
+    const delayedAuditory=atLatency(auditoryLatency);
+    const delayedProprio=atLatency(proprioLatency);
+    const aud=feedbackForce(delayedAuditory.sensory,c,x.length);
     const u=x.map((xi,j)=>{
       const ff=68*(target[j]-xi)-14*v[j];
-      const proprio=32*Number(c.somatosensory??0)*(target[j]-delayed.x[j]);
+      const proprio=32*Number(c.somatosensory??0)*(target[j]-delayedProprio.x[j]);
       return ff+proprio+aud[j];
     });
-    while(this.history.length>2 && this.history[1].t<t-latency-.05)this.history.shift();
+    const maxLatency=Math.max(auditoryLatency,proprioLatency);
+    while(this.history.length>2 && this.history[1].t<t-maxLatency-.05)this.history.shift();
     return {u,planning:s.weights.slice(),selected:s.selected,
-      details:sensory?.auditory?'VTL transfer-function sensory feedback':'Feedforward and delayed proprioception only'};
+      details:delayedAuditory.sensory?.auditory?'VTL transfer-function sensory feedback':'Feedforward and delayed proprioception only'};
   }
 }
