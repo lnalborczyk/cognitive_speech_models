@@ -29,6 +29,8 @@ Both use the same normalized actuator and VTL speaker. The underlying vocal-trac
 
 These experiments do not establish speech intelligibility, biological fidelity, or perceptual compensation.
 
+The [automated VTL feedback-balance validation](docs/feedback-balance-validation.md) executes local F1-sensitivity and matched ±150-Hz sustained-vowel simulations in a browser and saves downloadable results in GitHub Actions artifacts.
+
 ## Source structure
 
 | Path | Responsibility |
