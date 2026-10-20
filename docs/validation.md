@@ -19,7 +19,7 @@ These tests are **not** validation against published model simulations or human 
 - **Task-space geometry:** stop contact sites are selected using VTL target cross-sections and approximate tract intervals. Numerical gradients represent local sensitivities at the present posture; they are not calibrated task-space coordinates across the entire vocal tract.
 - **Feedback:** delayed measurements and gain-weighted Jacobian corrections are heuristics. There is no learned DIVA inverse map, Kalman state estimator, or full stochastic optimal-feedback controller.
 - **Consonants:** context-dependent target poses alone do not guarantee stop closure, burst, pressure timing or appropriate laryngeal gestures.
-- **Backend parity:** online sensory feedback is available in the WebAssembly worker; native server mode remains an open-loop baseline for motor trajectories.
+- **Browser VTL only:** geometry and sound use the VTL WebAssembly worker. This does not validate the reduced-order motor models.
 
 ## Suggested validation sequence
 

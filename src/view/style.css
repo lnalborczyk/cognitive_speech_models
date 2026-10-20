@@ -28,3 +28,19 @@
 .comparison{overflow-x:auto;max-width:100%}
 #feedback-test-report audio{display:block;width:100%;max-width:100%;margin:5px 0 11px}
 #feedback-test-report table{min-width:530px}
+
+/* 1.5: single compact simulation + optional research diagnostics */
+.layout{grid-template-columns:minmax(235px,285px) minmax(0,1fr);max-width:1240px}
+.maincontent canvas{display:block;width:100%;max-width:100%;height:auto}
+.disclosure{border-top:1px solid #2c455c;margin-top:13px;padding-top:12px}
+.disclosure summary{cursor:pointer;color:#a5e0e1;font-weight:600;font-size:12px;list-style:revert}
+.disclosure[open]>summary{margin-bottom:14px}
+.tool{border-top:1px solid #2c4058;margin:20px 0;padding-top:16px}
+.tool button{margin:5px 5px 5px 0}
+.tool canvas{margin-top:10px}
+#advanced-sliders{padding:4px 0}
+.status{overflow-wrap:anywhere}
+.native-geometry{height:375px}
+#scrub{margin-top:15px}
+#research-tools>.disclosure{margin-top:0}
+@media(max-width:790px){.layout{display:block}.controls,.maincontent{display:flex;flex-direction:column}.panel{margin-bottom:10px}.native-geometry{height:270px}}

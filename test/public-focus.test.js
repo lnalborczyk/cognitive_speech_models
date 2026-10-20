@@ -18,6 +18,6 @@ test('unperturbed feedback is off by default',()=>{
 });
 test('new public scientific controls are accessible',()=>{
  const html=fs.readFileSync('index.html','utf8');
- for(const id of ['sweep-test','calibration-test','feedback-test','experiment'])
+ for(const id of ['sweep-test','calibration-test','authority-test','experiment'])
    assert.match(html,new RegExp(`id="${id}"`));
 });

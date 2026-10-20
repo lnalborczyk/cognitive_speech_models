@@ -33,6 +33,10 @@ self.onmessage=async event=>{
       if(!backend)throw new Error('VTL engine not initialized');
       progress('calibrating vowel goals from actual VTL speaker shapes');
       result=new VTLSensoryObserver(backend).calibrationReport();
+    }else if(method==='f1-authority'){
+      if(!backend)throw new Error('VTL engine not initialized');
+      progress('measuring local acoustic sensitivity with real VTL transfer functions');
+      result=new VTLSensoryObserver(backend).localF1Authority();
     }else if(method==='simulate'||method==='simulate-only'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('measuring VTL sensory feedback during motor simulation');

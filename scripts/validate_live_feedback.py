@@ -195,6 +195,7 @@ def main():
             if not page.locator('#sweep-test').count() or not page.locator('#perturbation-csv').count():
                 raise RuntimeError('Hosted application is an older version without validation controls: '
                                    + result['website_version'])
+            page.locator('#research-tools').evaluate('(el) => el.open = true')
             result['vowel_calibration'] = None
             page.locator('#calibration-test').click()
             page.wait_for_function('''() => {
@@ -207,6 +208,18 @@ def main():
                 raise RuntimeError(calibration)
             result['vowel_calibration'] = page.locator('#calibration-report tbody tr').evaluate_all(
                 'rows => rows.map(r => Array.from(r.querySelectorAll("td"), x => x.textContent.trim()))')
+            if page.locator('#authority-test').count():
+                page.locator('#authority-test').click()
+                page.wait_for_function("""() => {
+                  const el=document.querySelector('#authority-report');
+                  return el?.querySelectorAll('tbody tr').length===3 ||
+                     (el?.textContent||'').startsWith('F1 sensitivity failed:');
+                }""", timeout=args.timeout)
+                authority_report=page.locator('#authority-report').inner_text()
+                if authority_report.startswith('F1 sensitivity failed:'):
+                    raise RuntimeError(authority_report)
+                result['local_f1_authority']=authority_report
+                save_download(page, '#authority-csv', args.artifacts/'vtl-f1-authority.csv')
             result['gain_delay_sweep'] = run_sweep(page, args.artifacts, args.timeout)
             results = []
             for seed in seeds:

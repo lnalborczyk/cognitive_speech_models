@@ -6,7 +6,7 @@ export function mulberry32(seed){let v=seed>>>0;return ()=>{v+=0x6D2B79F5;let x=
  * backends. VTL natively maps them into speaker-specific physical tract units.
  */
 export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
-  const c={rate:1,overlap:.3,feedback:0,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,seed:17,sensorySafety:true,...cfg};
+  const c={rate:1,overlap:.3,feedback:0,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,feedforwardScale:1,seed:17,sensorySafety:true,...cfg};
   if(!Number.isFinite(c.rate)||c.rate<=0)throw new Error('rate must be positive');
   const score=makeScore(phrase,speaker,c);
   const plant=makePlant(speaker,c.stiffness);

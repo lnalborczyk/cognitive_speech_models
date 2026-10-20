@@ -12,8 +12,7 @@ for relative in ('index.html','LICENSE','README.md'):
     destination=dist/relative
     destination.parent.mkdir(parents=True,exist_ok=True)
     copy2(source,destination)
-for folder,exts in [('src',{'.js','.css'}),('docs',{'.md','.txt'}),
-                    ('server',{'.py'}),('scripts',{'.py'})]:
+for folder,exts in [('src',{'.js','.css'}),('docs',{'.md','.txt'})]:
     for source in (root/folder).rglob('*'):
         if source.is_file() and source.suffix in exts:
             dest=dist/source.relative_to(root)

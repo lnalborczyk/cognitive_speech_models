@@ -1,14 +1,12 @@
 {
   "name": "cognitive_speech_models",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
-  "description": "Modular speech models with required VocalTractLab (native or experimental browser WebAssembly)",
+  "description": "Modular speech models with required VocalTractLab (browser WebAssembly)",
   "scripts": {
     "dev": "python3 -m http.server 5173",
-    "serve": "python3 scripts/launch.py",
     "test": "node --test test/*.test.js && python3 -m unittest discover -s test -p 'test_*.py'",
-    "smoke": "node scripts/smoke.mjs",
     "wasm:build": "python3 scripts/build_vtl_wasm.py"
   }
 }

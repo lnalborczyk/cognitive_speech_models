@@ -11,7 +11,7 @@ MUST_EXIST = [
   'index.html', 'src/app.js', 'src/engine/wasm-client.js',
   'src/engine/wasm-worker.js', 'src/engine/wasm-runtime.js',
   'src/view/native-animation.js', 'src/view/style.css',
-  'src/sim/closure-analysis.js','src/sim/feedback-benchmark.js',
+  'src/sim/closure-analysis.js','src/engine/vtl-sensing.js',
   'web/vtl/vtl.js', 'web/vtl/vtl.wasm', 'web/vtl/build.json',
 ]
 for path in MUST_EXIST:

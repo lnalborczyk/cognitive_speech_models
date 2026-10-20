@@ -12,6 +12,6 @@ test('app has only VTL backend options and VTL anatomy, no toy drawing',()=>{
 test('app refuses to simulate without an initialized VTL speaker',()=>{
  const app=file('src/app.js');
  assert.match(app,/function requireVTL\(/);
- assert.match(app,/if\(!speaker\?\.isNative\)/);
+ assert.match(app,/speaker\?\.kind!=='wasm'/);
  assert.doesNotMatch(app,/previewSpeaker|drawTract/);
 });

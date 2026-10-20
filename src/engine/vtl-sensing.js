@@ -93,6 +93,35 @@ export class VTLSensoryObserver {
           errors.every(e=>Number.isFinite(e)&&Math.abs(e)<1)};
     });
   }
+  /** Local acoustic control authority at speaker vowel targets.
+   * Each slope is a central finite difference of real VTL transfer-function
+   * resonances, with peak identity anchored to the unperturbed shape.
+   * A null slope means the resonance is unresolved, not zero sensitivity.
+   */
+  localF1Authority({vowels=['a','i','u'],delta=.01}={}){
+    const selected=['JA','TCX','TCY','LD'];
+    return vowels.map(phone=>{
+      const x=this.backend.shapes?.[phone];
+      if(!x)return {phone,baselineF1:null,slopes:[],valid:false};
+      const reference=this.formants(x);
+      const baselineF1=Number.isFinite(reference[0])?reference[0]:null;
+      const slopes=selected.map(name=>{
+        const index=this.backend.tract.names.indexOf(name);
+        if(index<0||baselineF1===null)return {parameter:name,slopeHzPerUnit:null};
+        const hi=x.slice(),lo=x.slice();
+        hi[index]=Math.min(1,hi[index]+delta);
+        lo[index]=Math.max(0,lo[index]-delta);
+        const width=hi[index]-lo[index];
+        if(width<1e-8)return {parameter:name,slopeHzPerUnit:null};
+        const a=this.formants(hi,reference)[0],b=this.formants(lo,reference)[0];
+        const slope=Number.isFinite(a)&&Number.isFinite(b)&&(Math.abs(a-baselineF1)<=150)&&(Math.abs(b-baselineF1)<=150)
+          ?(a-b)/width:null;
+        return {parameter:name,slopeHzPerUnit:slope};
+      });
+      const valid=slopes.some(v=>Number.isFinite(v.slopeHzPerUnit));
+      return {phone,baselineF1,slopes,valid};
+    });
+  }
   measure(x,target,phone,context,{sensorySafety=true}={}){
     const n=x.length,stop=['p','t','k'].includes(phone),dims=this.indices[stop?phone:'vowel'];
     // Track identities across observer updates, not just within Jacobian probes.

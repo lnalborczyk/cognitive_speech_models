@@ -24,7 +24,8 @@ export class DIVA {
     const auditoryResult=feedbackForceDetailed(delayedAuditory.sensory,c,x.length);
     const aud=auditoryResult.force;
     const u=x.map((xi,j)=>{
-      const ff=68*(target[j]-xi)-14*v[j];
+      const scale=Number.isFinite(c.feedforwardScale)?c.feedforwardScale:1;
+      const ff=scale*(68*(target[j]-xi)-14*v[j]);
       const proprio=32*Number(c.somatosensory??0)*(target[j]-delayedProprio.x[j]);
       return ff+proprio+aud[j];
     });

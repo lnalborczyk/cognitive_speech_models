@@ -1,73 +1,59 @@
 # Cognitive Speech Models
 
-[**Launch the browser application**](https://lnalborczyk.github.io/cognitive_speech_models/) · [Source](https://github.com/lnalborczyk/cognitive_speech_models) · [Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues)
+[**Open the interactive application**](https://lnalborczyk.github.io/cognitive_speech_models/) · [Repository](https://github.com/lnalborczyk/cognitive_speech_models) · [Issues](https://github.com/lnalborczyk/cognitive_speech_models/issues)
 
-An interactive research and teaching sandbox for exploring two simplified approaches to speech motor control with a **shared VocalTractLab (VTL)** vocal-tract geometry and acoustic synthesizer.
+**Cognitive Speech Models** is a free browser-based research and teaching sandbox for speech motor control. It provides two **reduced-order**, inspectable controllers (DIVA-inspired and Task Dynamics-inspired) connected to a common [VocalTractLab](https://vocaltractlab.de/) (VTL) geometric/acoustic engine compiled to **WebAssembly**. No backend server, account or local software installation is needed to use the public site.
 
-The application runs on GitHub Pages with VTL compiled to WebAssembly. Visitors can visualize articulators, listen to synthesized speech, investigate target tracking and sensory perturbations, and export CSV/WAV results. No account or server installation is required.
+The modular, interactive approach was inspired by [**CognitiveHands — CrumpLabSandbox**](https://github.com/CrumpLabSandbox/CognitiveHands) ([live application](https://crumplabsandbox.github.io/CognitiveHands/)). Cognitive Speech Models is an independent adaptation for speech production; it is not an official CognitiveHands component.
 
-## Models
+## Using the application
 
-- **DIVA-inspired controller:** feedforward articulatory tracking, delayed somatosensory correction, and optional feedback from VTL-estimated auditory resonances.
-- **Task Dynamics-inspired controller:** overlapping articulatory gestures; VTL-measured constrictions and numerical task-space derivatives where available.
+Choose a controller and phonetic utterance, then click **Run**. Play the speech and synchronized VTL anatomical animation, scrub the timeline, inspect articulatory and acoustic trajectories, and download the WAV or trajectory CSV. Auditory feedback is off by default because its gains are not calibrated to human data.
 
-Both models use the same speaker, normalized actuator and task sequences. Their controller equations are **transparent, reduced-order demonstrations**, not faithful implementations of the original published neural or biomechanical architectures. VTL's research-based geometry and acoustic synthesis **do not validate** the higher-level controller predictions.
+For more parameters, open **Advanced motor and feedback controls**. To reproduce exploratory experiments, expand **Research and validation tools**. The main page intentionally omits legacy multi-controller comparisons, server settings, and a permanently open panel of research tests.
 
-## Getting started
+### Implemented controllers
 
-Open the [online application](https://lnalborczyk.github.io/cognitive_speech_models/), choose a controller and phonetic sequence, and select **Run simulation**. Play the synchronized animation and waveform, or use the timeline to inspect articulatory changes. Auditory feedback is **off by default** until its behavior is calibrated. The feedback gain, sensory delay, and perturbation controls are available for explicit experiments.
+- **DIVA-inspired:** feedforward articulatory target tracking with delayed somatosensory feedback and optional VTL transfer-function-based auditory feedback. Adjustable feedforward strength supports testing the balance between restoring drive and auditory correction. There are **no learned DIVA neural maps**.
+- **Task Dynamics-inspired:** overlapping articulatory gestures with numerical constriction information from the VTL plant. This is not a complete original Task Dynamics implementation.
 
-**Experiments:**
+Both use the same normalized actuator and VTL speaker. The underlying vocal-tract geometry and acoustic synthesis come from VTL; the motor controller and target scheduling models remain simplified and are **not validated reproductions** of published speech-control systems.
 
-1. **VTL vowel reference check** measures F1–F3 from the current speaker's /a/, /i/, /u/ shapes and tests repeatability, not human phonetic accuracy.
-2. **Gain/delay sweep** holds proprioceptive latency constant while comparing unperturbed tracking at gains 0–0.4 with two delays, holding other parameters and the seed fixed.
-3. **Auditory F1 shift** compares paired trajectories under the same random seed and reports the direction and size of the simulated compensatory response.
-4. **Feedback ablation** exports three actual VTL waveforms and CSV diagnostics for auditory-off, legacy, and stabilized feedback.
-5. **Controller comparison** evaluates DIVA and Task Dynamics using identical settings and physical VTL synthesis.
+### Validation tools
 
-The auditory-shift manipulation affects **perceived feedback within the controller**, not the exported audio directly. Acoustic-formant estimates may be unresolved during closures. Tracking error, energy and waveform similarity do not establish perceptual accuracy or intelligibility.
+- **Reference vowel calibration:** measures repeatability of F1–F3 at /a/, /i/ and /u/ speaker shapes. Missing formants remain unresolved and never count as zero error.
+- **Local F1 sensitivity:** estimates finite-difference F1 changes to small perturbations of individual VTL parameters at canonical vowel targets; this is a diagnostic, **not** a learned or validated auditory inverse map.
+- **Feedforward/feedback balance:** compares paired VTL-predicted F1 responses across feedback gains and feedforward strengths, while reporting target tracking and missing measurements.
+- **Feedback sweep:** compares unperturbed tracking over auditory gains and delays. The zero-gain condition must be invariant to auditory delay.
+- **Paired perturbation:** compares produced F1 with and without an auditory feedback shift using matched targets and RNG seed, and exports time courses for inspecting response direction and latency.
 
-## Source architecture
+These experiments do not establish speech intelligibility, biological fidelity, or perceptual compensation.
 
-| Path | Component |
+## Source structure
+
+| Path | Responsibility |
 |---|---|
-| `src/cognitive/{diva,task-dynamics}.js` | Two controller equations |
-| `src/motor/gestures.js` | Phonetic sequences and overlapping targets |
-| `src/motor/plant.js` | Shared simplified normalized articulatory actuator |
-| `src/engine/vtl-sensing.js` | VTL transfer-function/area observations and speaker calibration |
-| `src/engine/wasm-runtime.js` | Native VTL functions running in WebAssembly |
-| `src/sim/gain-sweep.js` | Reproducible within-controller comparisons |
-| `src/app.js` | Application, experiments and exports |
-| `test/` | Unit and integration checks |
+| `src/cognitive/diva.js` | Reduced-order DIVA-inspired motor controller |
+| `src/cognitive/task-dynamics.js` | Task Dynamics-inspired controller |
+| `src/motor/gestures.js` | Phonetic targets and gestural overlap |
+| `src/motor/plant.js` | Shared normalized actuator |
+| `src/engine/vtl-sensing.js` | VTL-derived tube area, formants, and local F1 sensitivity |
+| `src/engine/wasm-runtime.js` | VocalTractLab C API adapter |
+| `src/engine/wasm-worker.js` | Browser worker for simulation and speech synthesis |
+| `src/app.js` | Interface, plotting, downloads, and experiments |
+| `.github/workflows/` | WebAssembly build, browser smoke test, and automated validation |
 
-## Contributing and development
+Every component is a separate readable source file, linked from the [GitHub repository](https://github.com/lnalborczyk/cognitive_speech_models/tree/main/src).
 
-The project uses ES modules, Python scripts and GitHub Actions. For source-level tests:
+## Development and deployment
 
-```bash
-npm test
-```
+Run source tests with `npm test`. To preview locally after compiling VTL WebAssembly assets, serve the repository using `python3 -m http.server 5173`, then open `http://localhost:5173/`. Rebuild with the Emscripten process in `scripts/build_vtl_wasm.py` or the GitHub Pages Actions workflow. GitHub Pages serves static HTML/JS/WASM; synthesis runs on the **visitor's machine**. The workflow tests the real VTL worker in Chromium before deploying.
 
-To run the static interface locally, use `python3 -m http.server 5173` from the repository directory. Interactive synthesis requires compiled VTL WebAssembly assets, built using `scripts/build_browser.sh` or the Pages workflow; a static server without those assets cannot synthesize speech. Native VTL users may instead run `python3 scripts/launch.py`. See [deployment instructions](docs/deployment.md) and [scientific validation notes](docs/validation.md).
-
-Pull requests should include numerical tests and clearly distinguish changes to physical VTL synthesis from changes to the simplified motor controllers. A public GitHub Pages deployment is produced only after the WebAssembly/browser integration test passes.
+See [deployment instructions](docs/deployment.md) and [validation limits](docs/validation.md). The VTL C++ backend and its speaker resources have their own upstream licenses; ensure compliance when redistributing compiled assets. See [`LICENSE`](LICENSE) for the repository license.
 
 ## References
 
-- [VocalTractLab and Birkholz's articulatory synthesizer](https://vocaltractlab.de/)
-- [VocalTractLab backend and C API](https://github.com/TUD-STKS/VocalTractLabBackend-dev)
+- [CrumpLabSandbox: CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands)
+- [VocalTractLab / articulatory synthesis](https://vocaltractlab.de/) and its [C API backend](https://github.com/TUD-STKS/VocalTractLabBackend-dev)
 - [Tourville & Guenther: DIVA](https://pmc.ncbi.nlm.nih.gov/articles/PMC3650855/)
 - [Saltzman & Munhall: Task Dynamics](https://doi.org/10.1207/s15326969eco0104_2)
-
-This software is an experimental visualization and comparison tool, not a validated numerical reproduction of DIVA or Task Dynamics. See the repository's `LICENSE` for licensing terms.
-
-## Feedback validation protocol
-
-See [auditory-feedback validation protocol](docs/feedback-validation.md) for reproducible speaker calibration, gain/delay sweeps, bidirectional F1 perturbations, time-course CSV export, and an analysis script.
-
-
-## Auditory feedback instrumentation (v1.4)
-
-The app includes held-vowel trials and exports the delayed VTL target and observed F1, validity, feedback command, and perturbation-evoked motor-command divergence. Results distinguish responses **during** the perturbed vowel from carryover into the following vowel. The calibration report optionally lists low-frequency spectral candidates without forcing an unresolved F1 estimate. These additions support model debugging, not claims of perceptual validity.
-
-See [the sustained-vowel and feedback diagnostic protocol](docs/feedback-instrumentation.md) and the public GitHub Actions *Validate live VTL feedback* workflow, which optionally runs held-/a/ tests in Chromium.

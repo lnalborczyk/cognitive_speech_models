@@ -5,11 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      feedback_ablation:
-        description: 'Run actual three-condition VTL feedback test in Chromium'
-        required: false
-        type: boolean
-        default: false
       diagnostic:
         description: 'Build with additional WebAssembly memory checks (slower)'
         required: false
@@ -71,11 +66,7 @@ jobs:
       - name: Verify synthesis and anatomical playback in Chromium
         shell: bash
         run: |
-          if [[ '${{ inputs.feedback_ablation }}' == 'true' ]]; then
-            python3 scripts/check_browser_vtl.py --artifacts artifacts --timeout 180000 --feedback-ablation
-          else
-            python3 scripts/check_browser_vtl.py --artifacts artifacts --timeout 180000
-          fi
+          python3 scripts/check_browser_vtl.py --artifacts artifacts --timeout 180000
       - name: Build GitHub Pages release
         run: |
           python3 scripts/prepare_static_site.py

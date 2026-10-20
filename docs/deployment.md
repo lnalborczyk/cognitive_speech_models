@@ -1,4 +1,4 @@
-# Free GitHub Pages deployment (v0.8.0)
+# Free GitHub Pages deployment
 
 This project can be hosted without a paid server **if and only if** the experimental VTL WebAssembly port compiles and initializes. GitHub Pages serves *static* artifacts; it cannot run a native Python/C++ API. The VTL Web Worker synthesizes sound and renders anatomical SVGs on the visitor's machine.
 
@@ -42,7 +42,7 @@ bash scripts/build_browser.sh "$SPEAKER"
 python3 -m http.server 5173
 ```
 
-Open `http://localhost:5173/`, not a `file://` URL. VTL WASM should be selected, audio and anatomy enabled. The native server remains separately available via `python3 scripts/launch.py`.
+Open `http://localhost:5173/`, not a `file://` URL. VTL WASM should be selected, audio and anatomy enabled. The public app exclusively uses the browser VTL WebAssembly engine.
 
 ## Costs, limitations and licensing
 

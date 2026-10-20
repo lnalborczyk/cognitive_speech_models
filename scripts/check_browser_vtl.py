@@ -118,8 +118,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifacts', type=Path, default=ROOT/'artifacts')
     parser.add_argument('--timeout', type=int, default=180_000)
-    parser.add_argument('--feedback-ablation', action='store_true',
-                        help='Also run controlled three-condition VTL feedback benchmark')
     parser.add_argument('--chromium-path', default='', help='Use a local Chromium binary instead of Playwright-managed Chromium')
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True)
@@ -169,6 +167,7 @@ def main():
                     raise AssertionError('Compiled VTL WASM binary was not successfully fetched')
                 # Verify that the online speaker's canonical vowel targets
                 # can be measured twice consistently with the same VTL model.
+                page.locator('#research-tools').evaluate('(el) => el.open = true')
                 page.locator('#calibration-test').click()
                 page.wait_for_function("""() => {
                   const element=document.querySelector('#calibration-report');
@@ -188,6 +187,19 @@ def main():
                     log['vowelCalibrationWarnings'] = calibration_warnings
                     print('VTL vowel calibration incomplete (not a deployment failure): '
                           + ', '.join(calibration_warnings), flush=True)
+                # Probe local acoustic authority through the real VTL WASM API.
+                # Missing individual derivatives are valid scientific diagnostics,
+                # not a software failure; the table itself must be generated.
+                page.locator('#authority-test').click()
+                page.wait_for_function("""() => {
+                  const el=document.querySelector('#authority-report');
+                  return el?.querySelectorAll('tbody tr').length===3 ||
+                    (el?.textContent||'').startsWith('F1 sensitivity failed:');
+                }""",timeout=args.timeout)
+                authority=page.locator('#authority-report').inner_text()
+                if authority.startswith('F1 sensitivity failed:'):
+                    raise RuntimeError(authority)
+                log['localF1Authority']=authority
                 # Confirm that simplification really exposes only two controllers.
                 options=page.locator('#model option').evaluate_all('(xs)=>xs.map(x=>x.value)')
                 if options != ['diva','td']:
@@ -201,6 +213,7 @@ def main():
                   const status=document.querySelector('#audio-status')?.textContent||'';
                   return value.includes('/p/ at ') || status.startsWith('Error:');
                 }""",timeout=args.timeout)
+                page.locator('#physical-diagnostics').evaluate('(el) => el.open = true')
                 report=page.locator('#closure-report').inner_text()
                 status=page.locator('#audio-status').inner_text()
                 if status.startswith('Error:') or '/p/ at ' not in report:
@@ -208,29 +221,6 @@ def main():
                 if 'minimum n/a' in report:
                     raise AssertionError('No VTL tube aperture reported for /p/: '+report)
                 log['closureDiagnostic'] = report
-                if args.feedback_ablation:
-                    # These three runs synthesize actual VTL WAVs. We do not
-                    # assert that any condition sounds better: the reported
-                    # values are experimental diagnostics, not intelligibility.
-                    page.evaluate("""() => {
-                      document.querySelector('#model').value='diva';
-                      document.querySelector('#phrase').value='aia';
-                      document.querySelector('#noise').value='0';
-                      document.querySelector('#feedback').value='0.8';
-                    }""")
-                    page.locator('#feedback-test').click()
-                    page.wait_for_function("""() => {
-                      const state=document.querySelector('#feedback-test-report')?.dataset.state;
-                      return state==='done' || state==='error';
-                    }""",timeout=args.timeout)
-                    ablation = page.locator('#feedback-test-report').inner_text()
-                    if page.locator('#feedback-test-report').get_attribute('data-state') != 'done':
-                        raise AssertionError('VTL feedback ablation failed: '+ablation)
-                    if not all(label in ablation for label in
-                        ('Auditory feedback off','Legacy unguarded feedback','Stabilized feedback')):
-                        raise AssertionError('Missing conditions in VTL feedback ablation: '+ablation)
-                    log['feedbackAblation']=ablation
-                    print('Real VTL three-condition feedback ablation completed:', ablation,flush=True)
                 log['result'] = 'PASS'
                 print('Real VTL WebAssembly browser test PASSED:', state)
                 print('Reference-place stop diagnostic:', report)
