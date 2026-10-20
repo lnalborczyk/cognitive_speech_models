@@ -1,0 +1,51 @@
+name: Validate v1.6 speech controllers
+
+on:
+  workflow_dispatch:
+    inputs:
+      babbling_trials:
+        description: 'Exploratory training samples per vowel'
+        type: choice
+        options: ['64', '96']
+        default: '64'
+      practice_trials:
+        description: 'Repeated practice attempts'
+        type: choice
+        options: ['5', '8']
+        default: '5'
+  workflow_run:
+    workflows: ['Build VTL WebAssembly and deploy GitHub Pages']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  v16-experiments:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chromium
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Run real-VTL Task Dynamics and DIVA experiments
+        run: |
+          python3 scripts/validate_v16_models.py \
+            --url https://lnalborczyk.github.io/cognitive_speech_models/ \
+            --artifacts artifacts/v16-models \
+            --babbling-trials '${{ inputs.babbling_trials || '64' }}' \
+            --practice-trials '${{ inputs.practice_trials || '5' }}'
+      - name: Upload experimental outputs and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtl-v16-controller-experiments
+          path: artifacts/v16-models/
+          if-no-files-found: warn
+          retention-days: 30

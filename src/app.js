@@ -361,3 +361,7 @@ $('practice-diva')?.addEventListener('click',async()=>{
  finally{button.disabled=false;}
 });
 await connect();
+
+/** Share the already initialized browser VTL worker with automated research
+ * validation. This does not expose additional controls in the public UI. */
+export function getResearchEngineForValidation(){return wasmClient;}

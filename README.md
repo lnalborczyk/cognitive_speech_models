@@ -19,6 +19,11 @@ For more parameters, open **Advanced motor and feedback controls**. To reproduce
 
 Both use the same normalized actuator and VTL speaker. The underlying vocal-tract geometry and acoustic synthesis come from VTL; the controllers are **research-inspired adaptations, not validated reproductions** of published DIVA or TADA. Training is run locally when the DIVA controller first executes. The VTL transfer function may not resolve every formant (particularly /i/ F1); missing data remain explicitly missing. Training and gestural movement are deterministic for a fixed seed and model configuration.
 
+
+### Controller-fidelity experiments (v1.6)
+
+The optional [v1.6 real-VTL validation workflow](docs/v16-experiment-protocol.md) compares /apa/, /ata/ and /aka/ across gestural-overlap settings; contrasts DIVA's local learned inverse map with its numerical-Jacobian baseline under paired F1 perturbations; and assesses motor-program retention after repeated practice. Its GitHub Actions artifacts include original trajectories and a structured summary. These are **model-diagnostic experiments**, not validations of human speech behavior.
+
 ### Validation tools
 
 - **Reference vowel calibration:** measures repeatability of F1–F3 at /a/, /i/ and /u/ speaker shapes. Missing formants remain unresolved and never count as zero error.
