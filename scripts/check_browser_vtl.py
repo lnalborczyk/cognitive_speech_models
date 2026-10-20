@@ -68,7 +68,9 @@ def snapshot(page):
 def validate_vowel_calibration(rows):
     """Check browser calibration as a *smoke test*, not a phonetic gold standard.
 
-    Each row is [vowel, measured F1/F2/F3, repeat errors, status].
+    Each row begins with [vowel, measured F1/F2/F3, repeat errors, status].
+    Additional trailing columns (e.g. low-band spectral candidates) are
+    scientific diagnostics and do not affect the calibration smoke test.
     An unresolved formant is a legitimate diagnostic finding; it must not
     prevent a functioning VTL synthesizer from being deployed.
     """
@@ -79,9 +81,12 @@ def validate_vowel_calibration(rows):
     repeatable = 0
     incomplete = []
     for row in rows:
-        if len(row) != 4:
+        if len(row) < 4:
             raise AssertionError(f'Malformed vowel calibration row: {row!r}')
-        vowel, formants, errors, status = [value.strip() for value in row]
+        # The UI added a fifth column for low-band spectral candidates in v1.4.
+        # Validate the stable four-field contract; preserve optional columns
+        # in the diagnostic JSON, without mistaking them for a software error.
+        vowel, formants, errors, status = [str(value).strip() for value in row[:4]]
         measured = [value.strip() for value in formants.split(' / ')]
         if len(measured) != 3:
             raise AssertionError(f'Expected three reported formant fields for {vowel}: {row!r}')

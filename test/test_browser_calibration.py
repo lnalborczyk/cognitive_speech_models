@@ -17,6 +17,33 @@ class TestVowelCalibrationGate(unittest.TestCase):
         self.assertEqual(validate_vowel_calibration([GOOD_A, PARTIAL_I, GOOD_U]),
                          ['/i/: Incomplete (2/3)'])
 
+    def test_exact_v1_4_five_column_calibration_rows(self):
+        # Real JD3 values from GitHub Actions run 39441361619.
+        five_column = [
+            GOOD_A + ['668'],
+            PARTIAL_I + ['311 / 328'],
+            GOOD_U + ['240'],
+        ]
+        self.assertEqual(validate_vowel_calibration(five_column),
+                         ['/i/: Incomplete (2/3)'])
+
+    def test_optional_diagnostic_columns_do_not_override_bad_calibration(self):
+        rows = [
+            GOOD_A + ['668'],
+            row('/i/', 'unresolved / 3173 / 4195', '— / 0.00 / 0.00', 'Repeatable') + ['311'],
+            GOOD_U + ['236'],
+        ]
+        with self.assertRaisesRegex(AssertionError, 'despite missing'):
+            validate_vowel_calibration(rows)
+
+    def test_missing_core_field_still_fails(self):
+        with self.assertRaisesRegex(AssertionError, 'Malformed'):
+            validate_vowel_calibration([GOOD_A, ['/i/', 'unresolved', '—'], GOOD_U])
+
+    def test_future_trailing_diagnostic_columns_allowed(self):
+        rows = [GOOD_A + ['668', 'other optional metric'], PARTIAL_I + ['311', ''], GOOD_U + ['236', '']]
+        self.assertEqual(validate_vowel_calibration(rows), ['/i/: Incomplete (2/3)'])
+
     def test_all_three_repeatable_passes(self):
         self.assertEqual(validate_vowel_calibration([
             GOOD_A, row('/i/', '280 / 2200 / 3200', '0.00 / 0.00 / 0.00', 'Repeatable'), GOOD_U]), [])
