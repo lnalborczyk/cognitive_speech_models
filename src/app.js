@@ -10,9 +10,10 @@ import {analyzeStops,CLOSURE_THRESHOLD_CM2} from './sim/closure-analysis.js';
 import {buildClosureDiagnostics} from './sim/closure-presentation.js';
 import {feedbackConditions,feedbackSummary,feedbackCsv} from './sim/feedback-benchmark.js';
 import {sweepConditions,pairedF1Response,pairedF1Csv,sweepCsv} from './sim/gain-sweep.js';
+import {responseWindows} from './sim/response-windows.js';
 
 const $=id=>document.getElementById(id);
-const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/sim/closure-presentation.js','src/sim/feedback-benchmark.js','src/sim/gain-sweep.js','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
+const SOURCES=['src/engine/wasm-client.js','src/engine/wasm-worker.js','src/engine/wasm-runtime.js','src/engine/vtl-sensing.js','src/motor/sensory-control.js','scripts/build_vtl_wasm.py','docs/webassembly.md','src/app.js','src/motor/plant.js','src/view/native-animation.js','src/motor/gestures.js','src/motor/shape-map.js','src/motor/task-space.js','src/sim/diagnostics.js','src/sim/closure-analysis.js','src/sim/closure-presentation.js','src/sim/feedback-benchmark.js','src/sim/gain-sweep.js','src/sim/response-windows.js','docs/feedback-instrumentation.md','src/cognitive/registry.js','src/cognitive/diva.js','src/cognitive/task-dynamics.js','src/sim/runner.js','src/view/plot.js','server/vtl.py','server/app.py','scripts/launch.py','docs/models.md','docs/deployment.md','docs/embedded-vtl.md','docs/vtl-setup.md','docs/validation.md'];
 const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,0,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Auditory feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let native=null,wasm=null,speaker=null,simulation=null,nativeResult=null;
 let acousticSpec=null,constrictionData=[],benchmarkRows=[],feedbackRows=[],feedbackAudioURLs=[],sweepRows=[],perturbationCsvText="";
@@ -63,7 +64,7 @@ async function connect(){
      const response=await fetch('/api/status',{cache:'no-store'});
      if(!response.ok)throw Error(`No VTL API on this web origin (HTTP ${response.status})`);
      const status=await response.json();
-     if(status.appVersion!=='1.3.2')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
+     if(status.appVersion!=='1.4.0')throw Error(`Unexpected server version: ${status.appVersion||'unknown'}. Restart scripts/launch.py from the updated project.`);
      if(!status.available)throw Error(status.error||'Native VTL is unavailable');
      const res=await fetch('/api/speaker',{cache:'no-store'});
      if(!res.ok)throw Error(`Native VTL speaker unavailable (HTTP ${res.status})`);
@@ -201,13 +202,14 @@ async function perturbationExperiment(){
     const samples=obsChange.filter((v,i)=>Number.isFinite(v)&&a[i].t>=onset);
     const meanHz=samples.length?samples.reduce((sum,v)=>sum+v,0)/samples.length:null;
     const paired=pairedF1Response(baseline,altered,{onsetMs:cfg.perturbationOnsetMs,shiftHz:shift});
+    const windows=responseWindows(baseline,altered,{onsetMs:cfg.perturbationOnsetMs,shiftHz:shift});
     perturbationCsvText=pairedF1Csv(baseline,altered,{onsetMs:cfg.perturbationOnsetMs,shiftHz:shift,model,phrase,seed:cfg.seed,feedback:cfg.feedback,delayMs:cfg.delay});
     $('perturbation-csv').disabled=false;
     const max=Math.max(.001,...change);
     plotLines('experiment-plot',[{data:change,color:'#74bcd4'},
       {data:[0,0],xs:[onset/Math.max(.001,duration()),onset/Math.max(.001,duration())],color:'#aaa'}],null,0,max*1.15,
       {xStart:'Start',xEnd:baseline.frames.at(-1).t.toFixed(2)+' s'});
-    $('experiment-report').textContent=`${model}: ${shift>0?'+':''}${shift} Hz shift in perceived F1 starting at ${onset.toFixed(2)} s. Paired normalized articulatory RMS divergence: ${rms.toFixed(5)}; mean change in VTL tract-predicted F1: ${meanHz===null?'not estimable':meanHz.toFixed(1)+' Hz'}. No difference is expected for controllers without effective auditory feedback. Paired late F1 compensation (opposite the imposed heard shift): ${paired.compensationHz===null?'not estimable':paired.compensationHz.toFixed(1)+' Hz'}; valid observer samples: ${paired.validSamples}. A shift in perceived F1 is not a change in emitted audio; these are exploratory controller responses, not human compensation estimates.`;
+    $('experiment-report').textContent=`${model}: ${shift>0?'+':''}${shift} Hz shift in perceived F1 starting at ${onset.toFixed(2)} s. Paired normalized articulatory RMS divergence: ${rms.toFixed(5)}; mean change in VTL tract-predicted F1: ${meanHz===null?'not estimable':meanHz.toFixed(1)+' Hz'}. No difference is expected for controllers without effective auditory feedback. Across the entire post-shift utterance, compensation (may include later vowels): ${paired.compensationHz===null?'not estimable':paired.compensationHz.toFixed(1)+' Hz'}; valid observer samples: ${paired.validSamples}. During /${windows.testVowel||'?'} / (from ${(windows.lateStart_s).toFixed(2)} to ${windows.testVowelEnd_s.toFixed(2)} s): ${windows.duringVowel.compensationHz===null?'F1 unresolved':windows.duringVowel.compensationHz.toFixed(2)+' Hz'} compensation from ${windows.duringVowel.validF1}/${windows.duringVowel.observations} new observer samples. ${windows.afterVowel?'Following-vowel compensation: '+(windows.afterVowel.compensationHz===null?'unresolved':windows.afterVowel.compensationHz.toFixed(2)+' Hz')+'.':''} A shift in perceived F1 is not a change in emitted audio; these are exploratory controller responses, not human compensation estimates.`;
   }catch(e){$('experiment-report').textContent='Perturbation experiment failed: '+e.message;}
   finally{button.disabled=false;}
 }
@@ -292,8 +294,8 @@ async function runCalibration(){
   button.disabled=true;out.textContent='Measuring /a/, /i/ and /u/ from the loaded VTL speaker…';
   try{
     const rows=await wasmClient.calibrate();
-    const table=rows.map(r=>`<tr><td>/${r.phone}/</td><td>${r.formantsHz.map(x=>Number.isFinite(x)?Math.round(x):'unresolved').join(' / ')}</td><td>${r.errorsHz.map(x=>Number.isFinite(x)?x.toFixed(2):'—').join(' / ')}</td><td>${r.resolved<3?'Incomplete ('+r.resolved+'/3)':r.zeroError?'Repeatable':'Inconsistent'}</td></tr>`).join('');
-    out.innerHTML=`<table><thead><tr><th>Vowel</th><th>VTL F1/F2/F3 (Hz)</th><th>Re-measurement error (Hz)</th><th>Consistency</th></tr></thead><tbody>${table}</tbody></table><p>Reference formants are computed from each loaded speaker shape. A repeatable result indicates numerical consistency, not phonetic accuracy. Unresolved peaks or unexpectedly high F2 values require further spectral validation.</p>`;
+    const table=rows.map(r=>`<tr><td>/${r.phone}/</td><td>${r.formantsHz.map(x=>Number.isFinite(x)?Math.round(x):'unresolved').join(' / ')}</td><td>${r.errorsHz.map(x=>Number.isFinite(x)?x.toFixed(2):'—').join(' / ')}</td><td>${r.resolved<3?'Incomplete ('+r.resolved+'/3)':r.zeroError?'Repeatable':'Inconsistent'}</td><td>${(r.lowBandCandidatesHz||[]).map(x=>Math.round(x)).join(' / ')||'—'}</td></tr>`).join('');
+    out.innerHTML=`<table><thead><tr><th>Vowel</th><th>VTL F1/F2/F3 (Hz)</th><th>Re-measurement error (Hz)</th><th>Consistency</th><th>Low-band candidates (Hz)</th></tr></thead><tbody>${table}</tbody></table><p>Reference formants are computed from each loaded speaker shape. A repeatable result indicates numerical consistency, not phonetic accuracy. Low-band candidates come from a finer-resolution VTL transfer-function spectrum and are not validated F1 measurements. Unresolved peaks or unusually high F2 require independent spectral validation.</p>`;
   }catch(error){out.textContent='Calibration failed: '+error.message;}
   finally{button.disabled=false;}
 }

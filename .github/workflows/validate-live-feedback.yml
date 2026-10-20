@@ -3,6 +3,11 @@ name: Validate live VTL feedback
 on:
   workflow_dispatch:
     inputs:
+      include_sustained:
+        description: 'Also run held-/a/ auditory feedback diagnostics (slower)'
+        required: false
+        default: true
+        type: boolean
       seeds:
         description: 'Comma-separated random seeds (17 for smoke, 17,23,41 for replication)'
         required: false
@@ -31,10 +36,15 @@ jobs:
           python3 -m playwright install --with-deps chromium
       - name: Execute live VTL feedback validation
         run: |
+          FLAGS=()
+          if [[ '${{ inputs.include_sustained }}' == 'true' ]]; then
+            FLAGS+=(--include-sustained)
+          fi
           python3 scripts/validate_live_feedback.py \
             --url https://lnalborczyk.github.io/cognitive_speech_models/ \
             --seeds '${{ inputs.seeds || '17' }}' \
-            --artifacts artifacts/live-validation
+            --artifacts artifacts/live-validation \
+            "${FLAGS[@]}"
       - name: Upload raw F1 trajectories, summary, and diagnostics
         if: always()
         uses: actions/upload-artifact@v4

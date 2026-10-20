@@ -4,37 +4,57 @@
  */
 export const FORMANT_SCALES=[500,1200,1600];
 export const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
-export function feedbackForce(sensory, cfg={}, n=0) {
+/** Return both the applied auditory force and a diagnostic for the delayed
+ * observation that generated it. Missing F1 is *not* interpreted as zero error.
+ * This is the correction actually used by DIVA, not a later reconstruction.
+ */
+export function feedbackForceDetailed(sensory, cfg={}, n=0) {
   const force=Array(n).fill(0);
-  if(!sensory)return force;
   const gain=Number(cfg.feedback??0);
-  const auditory=sensory.auditory, target=sensory.auditoryTarget;
-  if(gain>0 && auditory?.length===3 && target?.length===3) {
-    const J=sensory.auditoryJacobian;
-    if(Array.isArray(J)&&J.length===3) {
-      const norm=Array(n).fill(0);
-      for(let k=0;k<3;k++) {
-        if(!Number.isFinite(auditory[k])||!Number.isFinite(target[k]))continue;
-        // Shifts are added to *heard* F1; they never change the VTL synthesizer.
-        const onset=Number(cfg.perturbationOnsetMs??0)/1000;
-        const shift=k===0&&(sensory.time_s??0)>=onset?Number(cfg.perturbation||0):0;
-        const error=(auditory[k]+shift-target[k])/FORMANT_SCALES[k];
-        for(let j=0;j<n;j++) {
-          const derivative=(J[k]?.[j]||0)/FORMANT_SCALES[k];
-          if(!Number.isFinite(derivative))continue;
-          force[j]-=48*gain*error*derivative;
-          norm[j]+=derivative*derivative;
-        }
-      }
+  const auditory=sensory?.auditory, target=sensory?.auditoryTarget;
+  const jacobian=sensory?.auditoryJacobian;
+  const measured=Number.isFinite(auditory?.[0])?auditory[0]:null;
+  const intended=Number.isFinite(target?.[0])?target[0]:null;
+  const validF1=measured!==null&&intended!==null;
+  const onset=Number(cfg.perturbationOnsetMs??0)/1000;
+  const measuredAt=Number.isFinite(sensory?.measuredAt_s)?sensory.measuredAt_s:
+    Number.isFinite(sensory?.time_s)?sensory.time_s:0;
+  const shift=gain>0&&Number.isFinite(measuredAt)&&measuredAt>=onset?Number(cfg.perturbation||0):0;
+  const jacF1=Array.isArray(jacobian?.[0])?jacobian[0]:[];
+  const jacobianNormF1=Math.sqrt(jacF1.reduce((sum,v)=>sum+(Number.isFinite(v)?v*v:0),0));
+  let validBands=0;
+  if(gain>0&&auditory?.length===3&&target?.length===3&&jacobian?.length===3){
+    const norm=Array(n).fill(0);
+    for(let k=0;k<3;k++) {
+      if(!Number.isFinite(auditory[k])||!Number.isFinite(target[k]))continue;
+      validBands++;
+      const appliedShift=k===0?shift:0;
+      const error=(auditory[k]+appliedShift-target[k])/FORMANT_SCALES[k];
       for(let j=0;j<n;j++){
-        force[j]/=(.35+norm[j]);
-        // Regularize local inverse corrections: resonance peaks can switch
-        // identities and must not drive unbounded motor accelerations.
-        if(cfg.sensorySafety!==false)force[j]=Math.max(-18,Math.min(18,force[j]));
+        const derivative=(jacobian[k]?.[j]||0)/FORMANT_SCALES[k];
+        if(!Number.isFinite(derivative))continue;
+        force[j]-=48*gain*error*derivative;
+        norm[j]+=derivative*derivative;
       }
     }
+    for(let j=0;j<n;j++){
+      force[j]/=(.35+norm[j]);
+      if(cfg.sensorySafety!==false)force[j]=Math.max(-18,Math.min(18,force[j]));
+    }
   }
-  return force;
+  const commandRms=n?Math.sqrt(force.reduce((s,v)=>s+v*v,0)/n):0;
+  const status=!sensory?'no_observation':gain<=0?'gain_disabled':
+    !validF1?'f1_unresolved':!Array.isArray(jacobian?.[0])?'jacobian_unavailable':
+    jacobianNormF1<=1e-10?'f1_jacobian_zero':'available';
+  return {force,diagnostic:{status,validF1,validBands,
+    measuredF1Hz:measured,targetF1Hz:intended,
+    errorF1Hz:validF1?measured+shift-intended:null,
+    appliedShiftHz:shift,jacobianNormF1,commandRms,
+    observationTime_s:Number.isFinite(measuredAt)?measuredAt:null}};
+}
+/** Backwards-compatible entry point for other controllers. */
+export function feedbackForce(sensory,cfg={},n=0){
+  return feedbackForceDetailed(sensory,cfg,n).force;
 }
 export function constrictionForce(sensory,n=0,{gain=65}={}){
   const u=Array(n).fill(0);
@@ -46,6 +66,19 @@ export function constrictionForce(sensory,n=0,{gain=65}={}){
   const error=Math.max(-3,Math.min(3,area-targetArea));
   for(let j=0;j<n;j++)u[j]=-gain*error*(jacobian[j]||0)/norm;
   return u;
+}
+/** Candidate local maxima for spectral diagnostics; these are *not*
+ * automatically accepted as formants. Higher resolution and a lower search
+ * limit help distinguish a missing low-F1 resonance from a peak-assignment
+ * error without changing the control law.
+ */
+export function lowBandPeakCandidates(magnitudes,rate,{lowHz=100,highHz=1200}={}){
+  const step=rate/magnitudes.length,found=[];
+  for(let i=Math.max(2,Math.ceil(lowHz/step));i<Math.min(magnitudes.length/2-1,Math.floor(highHz/step));i++){
+    const left=Number(magnitudes[i-1]),cur=Number(magnitudes[i]),right=Number(magnitudes[i+1]);
+    if(Number.isFinite(cur)&&cur>0&&cur>left&&cur>=right)found.push({hz:+(i*step).toFixed(1),magnitude:cur});
+  }
+  return found.sort((a,b)=>b.magnitude-a.magnitude).slice(0,6);
 }
 /** A peak finder for VTL's *physical tract transfer function*, not for a
  * guessed formant map. Null explicitly means an unresolvable resonance.

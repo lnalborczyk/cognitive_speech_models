@@ -1,4 +1,4 @@
-import {feedbackForce} from '../motor/sensory-control.js';
+import {feedbackForceDetailed} from '../motor/sensory-control.js';
 /** DIVA-inspired controller with VTL-measured, delayed acoustic feedback when
  * the browser worker supplies a sensory observer. Not a trained DIVA map.
  */
@@ -21,7 +21,8 @@ export class DIVA {
     };
     const delayedAuditory=atLatency(auditoryLatency);
     const delayedProprio=atLatency(proprioLatency);
-    const aud=feedbackForce(delayedAuditory.sensory,c,x.length);
+    const auditoryResult=feedbackForceDetailed(delayedAuditory.sensory,c,x.length);
+    const aud=auditoryResult.force;
     const u=x.map((xi,j)=>{
       const ff=68*(target[j]-xi)-14*v[j];
       const proprio=32*Number(c.somatosensory??0)*(target[j]-delayedProprio.x[j]);
@@ -30,6 +31,7 @@ export class DIVA {
     const maxLatency=Math.max(auditoryLatency,proprioLatency);
     while(this.history.length>2 && this.history[1].t<t-maxLatency-.05)this.history.shift();
     return {u,planning:s.weights.slice(),selected:s.selected,
+      auditoryDiagnostics:{...auditoryResult.diagnostic,command:aud.slice()},
       details:delayedAuditory.sensory?.auditory?'VTL transfer-function sensory feedback':'Feedforward and delayed proprioception only'};
   }
 }

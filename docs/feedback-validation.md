@@ -4,7 +4,7 @@ These are **simulation diagnostics**, not tests of whether the published DIVA mo
 
 ## 1. Prerequisites
 
-Deploy the v1.3.2 source and wait for the GitHub Pages build-and-browser test to pass. Verify the version label reads `1.3.2` and the engine says `VocalTractLab WebAssembly`.
+Deploy the v1.4.0 source and wait for the GitHub Pages build-and-browser test to pass. Verify the version label reads `1.4.0` and the engine says `VocalTractLab WebAssembly`.
 
 ## 2. Reference vowels
 

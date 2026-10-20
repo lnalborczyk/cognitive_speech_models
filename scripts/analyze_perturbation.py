@@ -66,7 +66,24 @@ def analyze(path, min_late_samples=3):
                        if finite(r['time_s']) is not None
                        and finite(r['time_s']) >= onset
                        and (finite(r['motor_divergence_RMS']) or 0) > 1e-5), None)
+    # Diagnostics reflect the *delayed observations used by the controller*,
+    # not an instantaneous re-estimate of the plant state.
+    feedback_rows = [r for r in rows if finite(r['time_s']) is not None
+                     and finite(r['time_s']) >= onset and 'feedback_status' in r]
+    valid_feedback = [r for r in feedback_rows if r.get('feedback_valid_F1') == 'true']
+    first_shift = next((finite(r['time_s']) for r in feedback_rows
+                        if abs(finite(r.get('feedback_applied_shift_Hz')) or 0) > .001), None)
+    first_command = next((finite(r['time_s']) for r in feedback_rows
+                          if (finite(r.get('feedback_command_RMS')) or 0) > 1e-5), None)
+    first_changed_command = next((finite(r['time_s']) for r in feedback_rows
+                                  if (finite(r.get('delta_auditory_command_RMS')) or 0) > 1e-5), None)
     return {
+        'n_feedback_logged_frames': len(feedback_rows),
+        'fraction_feedback_f1_valid': (len(valid_feedback)/len(feedback_rows)
+                                       if feedback_rows else None),
+        'first_shift_at_feedback_s': first_shift,
+        'first_nonzero_auditory_command_s': first_command,
+        'first_perturbation_changed_command_s': first_changed_command,
         'file': str(path), 'model': row0.get('model',''),
         'phrase': row0.get('phrase',''), 'seed': row0.get('seed',''),
         'feedback_gain': row0.get('feedback_gain',''), 'delay_ms': row0.get('delay_ms',''),

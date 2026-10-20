@@ -1,4 +1,4 @@
-import {formantsFromSpectrum} from '../motor/sensory-control.js';
+import {formantsFromSpectrum,lowBandPeakCandidates} from '../motor/sensory-control.js';
 
 /** Online geometry/acoustic observer. All measurements invoke VTL C functions.
  * The derivatives are *local numerical derivatives* of those functions,
@@ -12,7 +12,7 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export class VTLSensoryObserver {
   constructor(backend,{intervalSteps=8}={}){
     this.backend=backend;this.intervalSteps=intervalSteps;
-    this.cached=null;this.lastPhone='';this.sites=new Map();this.spectralWarnings=0;
+    this.cached=null;this.lastPhone='';this.lastMeasurementTime_s=null;this.sites=new Map();this.spectralWarnings=0;
     this.lastVowelObservation=null;this.calibratedVowels=new Map();this.sensoryUpdates=0;
     this.indices={};
     for(const [kind,parameters] of Object.entries(PARAMS)) {
@@ -37,6 +37,17 @@ export class VTLSensoryObserver {
       if(code!==0)return [null,null,null];
       return formantsFromSpectrum(b.doubles(mag,N),b.rate,reference);
     });}catch(error){this.spectralWarnings++;return [null,null,null];}
+  }
+  /** Higher-resolution VTL transfer-function diagnostic, never fed back to
+   * the motor controller until independently validated. */
+  lowBandDiagnostics(x){
+    const b=this.backend,N=2048;
+    if(!b.transferFunction)return [];
+    try{return b.using([b.ntract*8,N*8,N*8],(p,mag,phase)=>{
+      b.writeDoubles(p,b.denormalize(x));
+      if(b.transferFunction(p,N,0,mag,phase)!==0)return [];
+      return lowBandPeakCandidates(b.doubles(mag,N),b.rate);
+    });}catch{return [];}
   }
   site(phone,context='a'){
     const key=`${phone}:${context}`;
@@ -76,6 +87,7 @@ export class VTLSensoryObserver {
       const measurement=this.formants(shape,target);
       const errors=target.map((f,k)=>Number.isFinite(f)&&Number.isFinite(measurement[k])?measurement[k]-f:null);
       return {phone,formantsHz:target,errorsHz:errors,
+        lowBandCandidatesHz:this.lowBandDiagnostics(shape).map(x=>x.hz),
         resolved:errors.filter(Number.isFinite).length,
         zeroError:errors.filter(Number.isFinite).length===3 &&
           errors.every(e=>Number.isFinite(e)&&Math.abs(e)<1)};
@@ -139,10 +151,13 @@ export class VTLSensoryObserver {
       calibrated:true,validAuditoryBands:actual.filter(Number.isFinite).length};
   }
   at({x,target,phone,context,step,cfg={}}){
-    if(!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone){
+    const observerUpdate=!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone;
+    if(observerUpdate){
       this.cached=this.measure(x,target,phone,context,{sensorySafety:cfg.sensorySafety!==false});
       this.lastPhone=phone;
+      this.lastMeasurementTime_s=step*.005;
     }
-    return {...this.cached,time_s:step*.005};
+    return {...this.cached,time_s:step*.005,
+      measuredAt_s:this.lastMeasurementTime_s,observerUpdate};
   }
 }

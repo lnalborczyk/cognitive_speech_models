@@ -1,6 +1,9 @@
 import { clamp } from './plant.js';
 import { resolvedShape, STOP_SHAPES } from './shape-map.js';
 export const PHRASES={
+  ahold:{label:'/aː/ sustained',phones:['a'],durationMultiplier:4},
+  ihold:{label:'/iː/ sustained (F1 diagnostic)',phones:['i'],durationMultiplier:4},
+  uhold:{label:'/uː/ sustained',phones:['u'],durationMultiplier:4},
   aia:{label:'/a i a/',phones:['a','i','a']},
   aua:{label:'/a u a/',phones:['a','u','a']},
   iai:{label:'/i a i/',phones:['i','a','i']},
@@ -23,9 +26,9 @@ function contextFor(phones,index){
   return 'a';
 }
 export function makeScore(phrase,speaker,{rate=1,overlap=.3}={}){
-  const phones=PHRASES[phrase]?.phones;
+  const definition=PHRASES[phrase],phones=definition?.phones;
   if(!phones)throw new Error(`Unknown utterance '${phrase}'`);
-  const unit=.29/rate;
+  const unit=(.29/rate)*(definition.durationMultiplier||1);
   const gestures=phones.map((phone,index)=>{
     const context=contextFor(phones,index),resolved=resolvedShape(speaker,phone,context);
     if(!resolved)throw new Error(`Missing speaker target for /${phone}/ (vowel context /${context}/). No target was synthesized or guessed.`);

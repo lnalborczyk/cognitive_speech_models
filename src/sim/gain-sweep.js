@@ -56,7 +56,12 @@ export function pairedF1Csv(baseline,altered,{
   const cols=['time_s','phone','observer_update','onset_s','shift_hz',
     'baseline_F1_Hz','shifted_F1_Hz','target_F1_Hz','baseline_error_Hz',
     'shifted_error_unperturbed_Hz','delta_produced_F1_Hz','compensation_Hz',
-    'motor_divergence_RMS','model','phrase','seed','feedback_gain','delay_ms'];
+    'motor_divergence_RMS','model','phrase','seed','feedback_gain','delay_ms',
+    'feedback_observation_time_s','feedback_measured_F1_Hz',
+    'feedback_target_F1_Hz','feedback_error_F1_Hz','feedback_applied_shift_Hz',
+    'feedback_jacobian_norm_F1','feedback_command_RMS','feedback_valid_F1','feedback_status',
+    'baseline_feedback_status','observer_sample_time_s',
+    'delta_auditory_command_RMS'];
   const fmt=x=>Number.isFinite(x)?String(x):'';
   const rows=a.map((f,i)=>{
     const g=b[i];
@@ -66,12 +71,22 @@ export function pairedF1Csv(baseline,altered,{
     const target=f.sensory?.auditoryTarget?.[0];
     const d=Number.isFinite(f1)&&Number.isFinite(other)?other-f1:null;
     const motor=Math.sqrt(f.x.reduce((sum,x,j)=>sum+(x-g.x[j])**2,0)/f.x.length);
-    const values=[fmt(f.t),f.phone||'',(i%8===0||f.phone!==a[i-1]?.phone)?'1':'0',
+    const ca=f.control?.command,cb=g.control?.command;
+    const changedCommand=Array.isArray(ca)&&Array.isArray(cb)&&ca.length===cb.length
+      ?Math.sqrt(ca.reduce((s,v,j)=>s+(v-cb[j])**2,0)/Math.max(1,ca.length)):null;
+    const values=[fmt(f.t),f.phone||'',(typeof f.sensory?.observerUpdate==='boolean'?f.sensory.observerUpdate:
+       (i%8===0||f.phone!==a[i-1]?.phone))?'1':'0',
       fmt(onsetMs/1000),fmt(shiftHz),fmt(f1),fmt(other),fmt(target),
       fmt(Number.isFinite(f1)&&Number.isFinite(target)?f1-target:null),
       fmt(Number.isFinite(other)&&Number.isFinite(target)?other-target:null),
       fmt(d),fmt(d===null?null:-Math.sign(shiftHz)*d),fmt(motor),
-      String(model),String(phrase),fmt(seed),fmt(feedback),fmt(delayMs)];
+      String(model),String(phrase),fmt(seed),fmt(feedback),fmt(delayMs),
+      fmt(g.control?.observationTime_s),fmt(g.control?.measuredF1Hz),
+      fmt(g.control?.targetF1Hz),fmt(g.control?.errorF1Hz),
+      fmt(g.control?.appliedShiftHz),fmt(g.control?.jacobianNormF1),
+      fmt(g.control?.commandRms),g.control?String(g.control.validF1):'',
+      g.control?.status||'',f.control?.status||'',fmt(f.sensory?.measuredAt_s),
+      fmt(changedCommand)];
     return values.join(',');
   });
   return [cols.join(','),...rows].join('\n')+'\n';

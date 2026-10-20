@@ -138,9 +138,11 @@ def run_sweep(page, artifacts, timeout):
             'path': str(path)}
 
 
-def run_perturbation(page, artifacts, *, gain, delay, shift, seed, timeout):
+def run_perturbation(page, artifacts, *, gain, delay, shift, seed, timeout,
+                     phrase='aia', onset_ms=550):
     set_controls(page, {'rate': .6, 'noise': 0, 'seed': seed, 'feedback': gain,
-                        'delay': delay, 'perturbation': shift, 'perturbationOnsetMs': 550})
+                        'delay': delay, 'perturbation': shift, 'perturbationOnsetMs': onset_ms})
+    page.locator('#phrase').evaluate('(el, phrase) => el.value = phrase', phrase)
     page.locator('#experiment').click()
     page.wait_for_function('''() => {
       const txt=document.querySelector('#experiment-report')?.textContent||'';
@@ -150,11 +152,11 @@ def run_perturbation(page, artifacts, *, gain, delay, shift, seed, timeout):
     if page.locator('#perturbation-csv').is_disabled():
         raise RuntimeError('VTL perturbation comparison failed: '
                            + page.locator('#experiment-report').inner_text())
-    condition = f'g{gain:.1f}_d{delay}_s{shift:+d}_seed{seed}'
+    condition = f'{phrase}_g{gain:.1f}_d{delay}_s{shift:+d}_seed{seed}'
     path = artifacts / f'paired_f1_{condition}.csv'
     save_download(page, '#perturbation-csv', path)
     result, rows = analyze(path)
-    invariants = validate_pair_rows(rows, gain=gain, onset=.55)
+    invariants = validate_pair_rows(rows, gain=gain, onset=onset_ms/1000)
     return {**result, **invariants, 'report': page.locator('#experiment-report').inner_text(),
             'file': str(path)}
 
@@ -166,6 +168,8 @@ def main():
     parser.add_argument('--seeds', default='17', help='Comma-separated seeds, e.g. 17,23,41')
     parser.add_argument('--timeout', type=int, default=240_000,
                         help='Milliseconds per VTL experiment')
+    parser.add_argument('--include-sustained', action='store_true',
+                        help='Also test a longer held-/a/ vowel with perturbations during steady articulation')
     parser.add_argument('--chromium-path', default='', help='Custom Chromium executable')
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True)
@@ -214,6 +218,16 @@ def main():
                     results.append(run_perturbation(page, args.artifacts, gain=gain,
                                   delay=delay, shift=shift, seed=seed, timeout=args.timeout))
             result['paired_conditions'] = results
+            if args.include_sustained:
+                if not page.locator('#phrase option[value="ahold"]').count():
+                    raise RuntimeError('Sustained /a/ is not available in the deployed app')
+                held = []
+                for gain, delay, shift in [(0,40,150),(.2,40,150),(.2,40,-150),(.2,100,150)]:
+                    held.append(run_perturbation(page,args.artifacts,gain=gain,
+                         delay=delay,shift=shift,seed=seeds[0],timeout=args.timeout,
+                         phrase='ahold',onset_ms=450))
+                result['sustained_conditions'] = held
+                print('Held-vowel conditions:',len(held),flush=True)
             # A missing F1 estimate is recorded as incomplete scientific evidence,
             # not silently treated as zero or a pass/fail prediction.
             result['incomplete_conditions'] = [r['file'] for r in results
@@ -238,10 +252,13 @@ def main():
     finally:
         (args.artifacts / 'live-feedback-result.json').write_text(json.dumps(result, indent=2))
         if result.get('paired_conditions'):
-            rows=result['paired_conditions']
+            rows=result.get('paired_conditions',[])+result.get('sustained_conditions',[])
             cols=['seed','feedback_gain','delay_ms','shift_hz','n_late_observer_samples',
                   'late_delta_produced_f1_hz','late_compensation_hz','late_compensation_fraction',
-                  'pre_onset_max_motor_divergence','first_motor_divergence_s','interpretation','file']
+                  'pre_onset_max_motor_divergence','first_motor_divergence_s',
+                  'fraction_feedback_f1_valid','first_shift_at_feedback_s',
+                  'first_nonzero_auditory_command_s','first_perturbation_changed_command_s',
+                  'interpretation','file']
             with (args.artifacts/'live-feedback-summary.csv').open('w',newline='') as stream:
                 writer=csv.DictWriter(stream,cols,extrasaction='ignore')
                 writer.writeheader();writer.writerows(rows)

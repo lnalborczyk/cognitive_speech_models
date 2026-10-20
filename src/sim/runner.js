@@ -24,7 +24,10 @@ export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
     const command=result.u.map(u=>clamp(u,-75,75));
     plant.step(command,dt,()=>c.noise*(random()+random()-1)*18);
     frames.push({t:+t.toFixed(3),x:plant.x.slice(),v:plant.v.slice(),target,
-      u:command,sensory:sensory?{auditory:sensory.auditory,area:sensory.constriction?.area??null,locationCm:sensory.constriction?.locationCm??null}:null,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],
+      u:command,control:result.auditoryDiagnostics||null,
+      sensory:sensory?{auditory:sensory.auditory,auditoryTarget:sensory.auditoryTarget,
+        observerUpdate:Boolean(sensory.observerUpdate),measuredAt_s:sensory.measuredAt_s??null,
+        area:sensory.constriction?.area??null,locationCm:sensory.constriction?.locationCm??null}:null,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],
       kind:score.gestures[result.selected]?.kind||'vowel'});
   }
   return {model,phrase,cfg:c,score,frames,speaker:speaker.kind,

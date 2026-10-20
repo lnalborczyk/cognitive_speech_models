@@ -64,3 +64,10 @@ This software is an experimental visualization and comparison tool, not a valida
 ## Feedback validation protocol
 
 See [auditory-feedback validation protocol](docs/feedback-validation.md) for reproducible speaker calibration, gain/delay sweeps, bidirectional F1 perturbations, time-course CSV export, and an analysis script.
+
+
+## Auditory feedback instrumentation (v1.4)
+
+The app includes held-vowel trials and exports the delayed VTL target and observed F1, validity, feedback command, and perturbation-evoked motor-command divergence. Results distinguish responses **during** the perturbed vowel from carryover into the following vowel. The calibration report optionally lists low-frequency spectral candidates without forcing an unresolved F1 estimate. These additions support model debugging, not claims of perceptual validity.
+
+See [the sustained-vowel and feedback diagnostic protocol](docs/feedback-instrumentation.md) and the public GitHub Actions *Validate live VTL feedback* workflow, which optionally runs held-/a/ tests in Chromium.
