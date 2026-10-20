@@ -7,7 +7,7 @@ import {simulate} from '../src/sim/runner.js';
 // Controlled fake of the VTL C API for validating the JS memory marshalling.
 // This does NOT test VTL's actual acoustic or anatomical algorithms.
 function vtlModuleMock(){
- const buffer=new ArrayBuffer(1024*1024),u8=new Uint8Array(buffer),i32=new Int32Array(buffer),f64=new Float64Array(buffer);
+ const buffer=new ArrayBuffer(16*1024*1024),u8=new Uint8Array(buffer),i32=new Int32Array(buffer),f64=new Float64Array(buffer);
  let next=64;const files=new Map();
  const writeText=(p,s)=>{u8.set(new TextEncoder().encode(s+'\0'),p);};
  const writeD=(p,x)=>f64.set(x,p/8);
@@ -85,4 +85,15 @@ test('auditory perturbation reaches physical motor trajectory through VTL transf
  const baseline=produce(0),shifted=produce(200);
  const sum=baseline.reduce((acc,f,i)=>acc+Math.abs(f.x[0]-shifted[i].x[0]),0);
  assert.ok(sum>0.00000001,`Altered acoustic feedback did not modify articulatory output (${sum})`);
+});
+
+test('Task Dynamics observes VTL tube-based gestural targets throughout simulation',()=>{
+ const b=new WasmVTL(vtlModuleMock()),sp=b.init();
+ const observer=new VTLSensoryObserver(b,{intervalSteps:6});
+ const data=simulate('td','aia',sp,{rate:.9,coupling:.5,noise:0},s=>observer.at(s));
+ assert.ok(data.frames.every(f=>f.x.every(Number.isFinite)));
+ const measured=data.frames.find(f=>f.taskState?.values?.TBCD!==undefined);
+ assert.ok(measured,'No physical VTL tract task was recorded');
+ assert.ok(Object.keys(measured.taskState.goals).length>0);
+ assert.ok(data.score.couplingGraph.length>0);
 });

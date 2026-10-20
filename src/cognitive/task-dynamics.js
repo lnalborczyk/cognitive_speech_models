@@ -1,5 +1,6 @@
 import {taskDrive} from '../motor/task-space.js';
-import {constrictionForce,feedbackForce} from '../motor/sensory-control.js';
+import {constrictionForce} from '../motor/sensory-control.js';
+import {taskSpaceCommand} from '../motor/task-dynamics-control.js';
 /** VTL-informed constriction task (if sensory backend present). Geometry
  * targets and gradients are measured online via vtlTractToTube; otherwise
  * use the explicitly labelled legacy surrogate in offline fixture tests.
@@ -12,10 +13,18 @@ export class TaskDynamics {
       const u=taskDrive(s.speaker.names,s.x,s.v,s.target,this.cfg);
       return {u,planning:s.weights.slice(),selected:s.selected,details:'Offline surrogate (no VTL sensor)'};
     }
-    const n=s.x.length,goal=s.sensory.constriction;
-    const task=goal?constrictionForce(s.sensory,n,{gain:55}):feedbackForce(s.sensory,{...this.cfg,perturbation:0},n);
-    const u=task.map((value,j)=>value+25*(s.target[j]-s.x[j])-13*s.v[j]);
+    if(s.sensory.taskGeometry){
+      const u=taskSpaceCommand({x:s.x,v:s.v,target:s.target,sensory:s.sensory,
+        rate:this.cfg.rate??1,stiffness:this.cfg.stiffness??1,
+        neutral:s.speaker.neutral,taskOmega:this.cfg.taskOmega??5.5,
+        regularization:this.cfg.taskRegularization??.08});
+      return {u,planning:s.weights.slice(),selected:s.selected,
+        details:'Overlapping gestures, VTL-derived tract tasks, critically damped task dynamics'};
+    }
+    // Legacy compatibility for offline tests against incomplete observer stubs.
+    const goal=s.sensory.constriction;
+    const u=goal?constrictionForce(s.sensory,s.x.length,{gain:55}):taskDrive(s.speaker.names,s.x,s.v,s.target,this.cfg);
     return {u,planning:s.weights.slice(),selected:s.selected,
-      details:goal?'VTL constriction-area task with finite-difference Jacobian':'VTL vowel resonance task'};
+      details:'Legacy observer without task geometry (non-production fallback)'};
   }
 }

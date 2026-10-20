@@ -1,3 +1,4 @@
+import {tubeTractVariables,taskJacobianFromVTL,scoreTaskGoals} from '../motor/tract-variables.js';
 import {formantsFromSpectrum,lowBandPeakCandidates} from '../motor/sensory-control.js';
 
 /** Online geometry/acoustic observer. All measurements invoke VTL C functions.
@@ -14,6 +15,7 @@ export class VTLSensoryObserver {
     this.backend=backend;this.intervalSteps=intervalSteps;
     this.cached=null;this.lastPhone='';this.lastMeasurementTime_s=null;this.sites=new Map();this.spectralWarnings=0;
     this.lastVowelObservation=null;this.calibratedVowels=new Map();this.sensoryUpdates=0;
+    this.calibratedTaskShapes=new Map();
     this.indices={};
     for(const [kind,parameters] of Object.entries(PARAMS)) {
       this.indices[kind]=parameters.map(name=>backend.tract.names.indexOf(name)).filter(i=>i>=0);
@@ -68,6 +70,30 @@ export class VTLSensoryObserver {
     if(!selected)return null;
     const result={...selected,targetArea:Math.max(0,selected.area),vowelArea:this.area(vowel).areas[selected.index]};
     this.sites.set(key,result);return result;
+  }
+  /** Reference task targets are measured from actual VTL tube sections and
+   * cached by speaker shape. No fixed consonant-area values are invented. */
+  taskShapeTargets(score){
+    for(const gesture of score.gestures){
+      const key=gesture.source||`${gesture.phone}:${gesture.context}`;
+      if(!this.calibratedTaskShapes.has(key)){
+        const tube=this.area(gesture.target);
+        this.calibratedTaskShapes.set(key,tubeTractVariables(tube.areas,tube.lengths));
+      }
+    }
+    return this.calibratedTaskShapes;
+  }
+  /** Measured tract-variable values and numerical Jacobian in VTL speaker units.
+   * The task targets are separate/overlapping gesture activations, NOT the
+   * controller's already blended global articulatory target. */
+  taskMeasurement(x,score,t){
+    const targets=this.taskShapeTargets(score);
+    const measure=state=>{const tube=this.area(state);
+      return tubeTractVariables(tube.areas,tube.lengths);};
+    const {values,jacobians}=taskJacobianFromVTL(measure,x,this.backend.tract.names);
+    const scoreGoals=scoreTaskGoals(score,t,targets);
+    return {values,jacobians,...scoreGoals,source:'VTL tube geometry',
+      units:{LA:'cm equivalent diameter',TTCD:'cm equivalent diameter',TBCD:'cm equivalent diameter',TTCL:'cm',TBCL:'cm'}};
   }
   /** F1–F3 of the actual VTL speaker's canonical vowel tract shapes.
    * These are model-specific acoustic goals, not generic human formant tables.
@@ -179,14 +205,21 @@ export class VTLSensoryObserver {
       source:'VTL vtlGetTransferFunction + vtlTractToTube',phone,context,
       calibrated:true,validAuditoryBands:actual.filter(Number.isFinite).length};
   }
-  at({x,target,phone,context,step,cfg={}}){
+  at({x,target,phone,context,step,cfg={},score,model,t}){
     const observerUpdate=!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone;
     if(observerUpdate){
       this.cached=this.measure(x,target,phone,context,{sensorySafety:cfg.sensorySafety!==false});
+      if(model==='td' && score)this.cached.taskGeometry=this.taskMeasurement(x,score,t??step*.005);
       this.lastPhone=phone;
       this.lastMeasurementTime_s=step*.005;
     }
-    return {...this.cached,time_s:step*.005,
+    // Planning targets evolve every motor time step, whereas expensive VTL
+    // geometry/Jacobian measurements are updated at the observer cadence.
+    const sampled=this.cached;
+    const taskGeometry=model==='td' && score && sampled.taskGeometry
+      ?{...sampled.taskGeometry,...scoreTaskGoals(score,t??step*.005,this.calibratedTaskShapes)}
+      :sampled.taskGeometry;
+    return {...sampled,taskGeometry,time_s:step*.005,
       measuredAt_s:this.lastMeasurementTime_s,observerUpdate};
   }
 }

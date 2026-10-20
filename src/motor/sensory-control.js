@@ -1,3 +1,4 @@
+import {predictCorrection} from '../cognitive/diva-learning.js';
 /** Sensory control utilities. Every auditory observation in WASM mode comes
  * from vtlGetTransferFunction, and every constriction observation from
  * vtlTractToTube. The gains and control law remain exploratory.
@@ -23,7 +24,20 @@ export function feedbackForceDetailed(sensory, cfg={}, n=0) {
   const jacF1=Array.isArray(jacobian?.[0])?jacobian[0]:[];
   const jacobianNormF1=Math.sqrt(jacF1.reduce((sum,v)=>sum+(Number.isFinite(v)?v*v:0),0));
   let validBands=0;
-  if(gain>0&&auditory?.length===3&&target?.length===3&&jacobian?.length===3){
+  // A learned sensory-to-motor map acts on signed errors outside a target
+  // REGION. Missing formants remain unavailable, never replaced by zero.
+  const region=Array.isArray(cfg.auditoryRegionHz)?cfg.auditoryRegionHz:[35,90,120];
+  const regionError=auditory?.map((value,k)=>{
+    if(!Number.isFinite(value)||!Number.isFinite(target?.[k]))return null;
+    const deviation=value+(k===0?shift:0)-target[k],halfWidth=region[k]??0;
+    return Math.sign(deviation)*Math.max(0,Math.abs(deviation)-Math.max(0,halfWidth));
+  });
+  if(gain>0 && cfg.divaMode==='learned' && cfg.learnedInverseMap){
+    const learnt=predictCorrection(cfg.learnedInverseMap,regionError,n);
+    for(let j=0;j<n;j++)force[j]=Math.max(-18,Math.min(18,
+      (cfg.learnedInverseGain??250)*gain*learnt[j]));
+    validBands=cfg.learnedInverseMap.validBands.filter(k=>Number.isFinite(regionError?.[k])).length;
+  }else if(gain>0&&auditory?.length===3&&target?.length===3&&jacobian?.length===3){
     const norm=Array(n).fill(0);
     for(let k=0;k<3;k++) {
       if(!Number.isFinite(auditory[k])||!Number.isFinite(target[k]))continue;
@@ -47,6 +61,7 @@ export function feedbackForceDetailed(sensory, cfg={}, n=0) {
     !validF1?'f1_unresolved':!Array.isArray(jacobian?.[0])?'jacobian_unavailable':
     jacobianNormF1<=1e-10?'f1_jacobian_zero':'available';
   return {force,diagnostic:{status,validF1,validBands,
+    mapping:cfg.divaMode==='learned'&&cfg.learnedInverseMap?'VTL-babbling inverse map':'numerical Jacobian',
     measuredF1Hz:measured,targetF1Hz:intended,
     errorF1Hz:validF1?measured+shift-intended:null,
     appliedShiftHz:shift,jacobianNormF1,commandRms,

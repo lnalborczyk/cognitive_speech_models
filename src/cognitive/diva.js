@@ -21,13 +21,17 @@ export class DIVA {
     };
     const delayedAuditory=atLatency(auditoryLatency);
     const delayedProprio=atLatency(proprioLatency);
-    const auditoryResult=feedbackForceDetailed(delayedAuditory.sensory,c,x.length);
+    const phone=s.score?.phones?.[s.selected] || s.sensory?.phone || 'a';
+    const learnedInverseMap=c.learnedMaps?.[phone] || c.learnedMaps?.[s.score?.gestures?.[s.selected]?.context];
+    const auditoryResult=feedbackForceDetailed(delayedAuditory.sensory,
+      {...c,learnedInverseMap},x.length);
     const aud=auditoryResult.force;
     const u=x.map((xi,j)=>{
       const scale=Number.isFinite(c.feedforwardScale)?c.feedforwardScale:1;
       const ff=scale*(68*(target[j]-xi)-14*v[j]);
       const proprio=32*Number(c.somatosensory??0)*(target[j]-delayedProprio.x[j]);
-      return ff+proprio+aud[j];
+      const learnedProgram=c.motorMemory?.[Math.round(t/(s.dt||.005))]?.[j]||0;
+      return ff+proprio+aud[j]+learnedProgram;
     });
     const maxLatency=Math.max(auditoryLatency,proprioLatency);
     while(this.history.length>2 && this.history[1].t<t-maxLatency-.05)this.history.shift();

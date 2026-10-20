@@ -1,16 +1,21 @@
-# Cognitive Speech Models v1.5.0
+# Release v1.6.0 — Model-oriented control mechanisms
 
-## Streamlined public simulator
+DIVA and Task Dynamics remain the only two public controllers. They now have
+more distinct mechanisms connected to a shared VocalTractLab WebAssembly engine.
 
-- Removed the native Python VTL server, local native build/install path, retired benchmark controls, legacy three-WAV ablation and source-code viewer. All synthesis uses upstream VocalTractLab **WebAssembly** in the browser.
-- Kept only DIVA-inspired and Task Dynamics-inspired controllers. The simulation interface shows articulatory anatomy, tube areas, speech audio, trajectories and spectrogram. Advanced scientific controls and diagnostics are collapsed by default.
-- Moved repeatability calibration, gain/delay experiments and paired F1 perturbation time courses into one advanced validation section. Existing automated workflow selectors remain stable.
-- Maintained explicit inspiration/attribution to [CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands).
+- DIVA: automatically fitted VTL babbling-based local auditory inverse maps,
+  auditory goal regions, and optional explicit practice updating feedforward
+  motor programs. Retains the numerical Jacobian as a comparison mode.
+- Task Dynamics: independent tract gestures and numerical VTL tube-task
+  Jacobians; critically damped task-space targets with damped pseudoinverse;
+  reduced coupling graph controls relative gesture timing.
+- External reference timeseries comparison helper, without claiming any
+  embedded TADA/DIVA reference trajectories.
+- Model-specific sliders; research/learning controls remain collapsed.
+- Public README maintains CognitiveHands attribution and describes limitations.
 
-## New exploratory science tools
-
-- **Local F1 sensitivity:** finite-difference derivatives from the real VTL transfer function at canonical /a/, /i/, /u/ shapes. Missing resonances remain unresolved; no human-formant labels or learned maps are imputed.
-- **DIVA feedforward strength:** adjustable scaling of the existing restoring controller term (defaults to the previous value). This does not alter the default behavior.
-- **Six-condition balance sweep:** pairs +150 Hz auditory perturbation with feedback gains 0/0.2 and feedforward scales 0.5/0.75/1.0; exports CSV for comparing small produced-F1 changes and target tracking.
-
-Scientific caveat: these remain reduced-order controllers, and F1 estimates are exploratory. Neither increased compensation nor reduced motor effort alone establishes speech accuracy. The original Emscripten integration must be validated by GitHub Actions after deployment.
+**Scientific qualification:** Neither controller is an exact reproduction of
+published DIVA or Task Dynamics/TADA, nor are the tube-based constriction
+variables identical to TADA's geometric constriction distances. Actual VTL
+WebAssembly synthesis, audio quality and motor stability require GitHub Actions
+integration after deployment; source-level tests alone are insufficient.

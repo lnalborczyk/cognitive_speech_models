@@ -69,6 +69,8 @@ export class BrowserVTLClient {
   init(){return this.request('init');}
   calibrate(){return this.request('calibrate');}
   f1Authority(){return this.request('f1-authority');}
+  trainDiva(options){return this.request('train-diva',{options});}
+  practiceDiva(phrase,cfg,{trials=5,learningRate=.12}={}){return this.request('practice-diva',{phrase,cfg,trials,learningRate});}
   simulateOnly(model,phrase,cfg){return this.request('simulate-only',{model,phrase,cfg});}
   simulate(model,phrase,cfg,options){return this.request('simulate',{model,phrase,cfg,options});}
   synthesize(frames,options){return this.request('synthesize',{frames,options});}

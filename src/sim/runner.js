@@ -1,3 +1,4 @@
+import {coupleGestureTiming} from '../motor/gestural-oscillators.js';
 import {makePlant,clamp} from '../motor/plant.js';
 import {makeScore,activation,blendedTarget} from '../motor/gestures.js';
 import {createController} from '../cognitive/registry.js';
@@ -8,7 +9,8 @@ export function mulberry32(seed){let v=seed>>>0;return ()=>{v+=0x6D2B79F5;let x=
 export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
   const c={rate:1,overlap:.3,feedback:0,somatosensory:.5,perturbation:0,delay:60,noise:0,stiffness:1,feedforwardScale:1,seed:17,sensorySafety:true,...cfg};
   if(!Number.isFinite(c.rate)||c.rate<=0)throw new Error('rate must be positive');
-  const score=makeScore(phrase,speaker,c);
+  const nominalScore=makeScore(phrase,speaker,c);
+  const score=model==='td'?coupleGestureTiming(nominalScore,{coupling:c.coupling??.35}):nominalScore;
   const plant=makePlant(speaker,c.stiffness);
   const controller=createController(model,c);
   const random=mulberry32(c.seed),dt=.005;
@@ -18,13 +20,14 @@ export function simulate(model,phrase,speaker,cfg={},sensoryProvider=null){
     const t=n*dt;
     const act=activation(score,t);
     const target=blendedTarget(score,t);
-    const sensory=sensoryProvider?sensoryProvider({x:plant.x.slice(),target,phone:score.phones[act.chosen],context:score.gestures[act.chosen].context,step:n,t,cfg:c}):null;
+    const sensory=sensoryProvider?sensoryProvider({x:plant.x.slice(),target,phone:score.phones[act.chosen],context:score.gestures[act.chosen].context,step:n,t,cfg:c,score,model}):null;
     const result=controller.step({x:plant.x.slice(),v:plant.v.slice(),target,dt,t,sensory,
       weights:act.weight,selected:act.chosen,score,speaker});
     const command=result.u.map(u=>clamp(u,-75,75));
     plant.step(command,dt,()=>c.noise*(random()+random()-1)*18);
     frames.push({t:+t.toFixed(3),x:plant.x.slice(),v:plant.v.slice(),target,
       u:command,control:result.auditoryDiagnostics||null,
+      taskState:sensory?.taskGeometry?{values:sensory.taskGeometry.values,goals:sensory.taskGeometry.goals}:null,
       sensory:sensory?{auditory:sensory.auditory,auditoryTarget:sensory.auditoryTarget,
         observerUpdate:Boolean(sensory.observerUpdate),measuredAt_s:sensory.measuredAt_s??null,
         area:sensory.constriction?.area??null,locationCm:sensory.constriction?.locationCm??null}:null,weights:result.planning,selected:result.selected,phone:score.phones[result.selected],

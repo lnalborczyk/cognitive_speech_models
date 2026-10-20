@@ -11,11 +11,11 @@ import {sweepConditions,pairedF1Response,pairedF1Csv,sweepCsv} from './sim/gain-
 import {responseWindows} from './sim/response-windows.js';
 
 const $=id=>document.getElementById(id);
-const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['feedback','Auditory feedback gain',0,1.8,.1,0,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Auditory feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1 (WASM only)',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['feedforwardScale','DIVA feedforward strength',.3,1.5,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
+const specs=[['rate','Speech rate',.6,1.8,.1,1,'×'],['overlap','Gesture overlap',0,.8,.05,.3,''],['coupling','Gestural coupling',0,1,.05,.35,''],['taskOmega','Task stiffness (ω)',3,12,.5,5.5,' rad/s'],['feedback','Auditory feedback gain',0,1.8,.1,0,''],['somatosensory','Somatosensory gain',0,1.8,.1,.5,''],['delay','Auditory feedback delay',0,180,10,60,' ms'],['perturbation','Shift of heard F1',-200,200,20,0,' Hz'],['perturbationOnsetMs','Auditory shift onset',0,800,50,300,' ms'],['noise','Motor noise',0,.3,.02,.02,''],['stiffness','Plant stiffness',.6,2,.1,1,'×'],['feedforwardScale','DIVA feedforward strength',.3,1.5,.1,1,'×'],['seed','Random seed',1,99,1,17,'']];
 let wasm=null,speaker=null,simulation=null,nativeResult=null;
 let acousticSpec=null,constrictionData=[],sweepRows=[],perturbationCsvText="",authorityCsvText="",balanceCsvText="";
 const wasmClient=new BrowserVTLClient({onProgress: phase => {
-  $('engine-status').textContent='Loading browser VTL: '+phase;
+  $('engine-status').textContent='VocalTractLab: '+phase;
   console.info('[VTL]',phase);
 }});
 let playing=false,animation=null,started=0,playOffset=0,timeline='silent';
@@ -29,7 +29,15 @@ for(const [key,name,min,max,step,def,suffix] of specs){
  $(key).addEventListener('input',()=>{$(key+'-value').textContent=$(key).value+suffix;});
  $(key).addEventListener('change',()=>{if(speaker)void run()});
 }
-function config(){return Object.fromEntries(specs.map(([k])=>[k,Number($(k).value)]));}
+function config(){return {...Object.fromEntries(specs.map(([k])=>[k,Number($(k).value)])),
+  divaMode:$('diva-mode')?.value||'learned'};}
+function showModelControls(){
+ const model=$('model').value;
+ for(const el of document.querySelectorAll('[data-model]'))
+   el.hidden=el.dataset.model!=='all'&&el.dataset.model!==model;
+ $('learning-tools').hidden=model!=='diva';
+ $('description').textContent=descriptions[model];
+}
 function message(text){$('audio-status').textContent=text;}
 function requireVTL(){
  if(speaker?.kind!=='wasm')throw new Error('VocalTractLab WebAssembly is not connected.');
@@ -47,11 +55,11 @@ async function connect(){
  nativePlayer.clear('Loading VocalTractLab…');plotArea(null);
  setConnected(false);$('reconnect').disabled=true;
  $('engine-status').dataset.state='connecting';$('engine-status').classList.remove('ready');
- $('engine-status').textContent='Loading browser VTL WebAssembly…';
+ $('engine-status').textContent='Loading VocalTractLab…';
  try{
    if(!await wasmClient.available())throw Error('VTL WebAssembly files are missing. Run the GitHub Pages build first.');
    wasm=await wasmClient.init();speaker=wasm;
-   updatePhraseAvailability();
+   updatePhraseAvailability();showModelControls();
    $('engine-status').textContent=`VocalTractLab ready · ${speaker.names.length} tract parameters`;
    $('engine-status').dataset.state='ready';$('engine-status').classList.add('ready');
    setConnected(true);await run();
@@ -59,8 +67,8 @@ async function connect(){
  finally{$('reconnect').disabled=false;}
 }
 const descriptions={
- diva:'DIVA-inspired: feedforward articulatory tracking plus optional delayed auditory feedback; not learned DIVA neural maps.',
- td:'Task Dynamics-inspired: overlapping gestures and VTL-measured constriction corrections.'};
+ diva:'DIVA-inspired: locally learned VTL sensory inverse maps, sensory target ranges, and separate feedforward/feedback commands. The neural learning model is reduced-order.',
+ td:'Task Dynamics-inspired: coupled gestural timing, VTL tube-derived tract variables, and damped task-space attractors.'};
 function updatePhraseAvailability(){
  if(!speaker)return;
  for(const option of $('phrase').options){
@@ -253,7 +261,7 @@ async function run(){
  $('wav').disabled=true;$('audio').disabled=true;
  const model=$('model').value,phrase=$('phrase').value;
  try{
-  $('description').textContent=descriptions[model];
+  showModelControls();
   const geometryFps=24;
   message('Computing VTL waveform, geometry, and sensory diagnostics…');
   const result=await wasmClient.simulate(model,phrase,config(),{geometry:true,geometryFps});
@@ -269,7 +277,7 @@ async function run(){
   $('audio').disabled=false;$('wav').disabled=false;
   $('geometry-label').textContent=`${response.svgs.length} VTL frames`;
   $('area-label').textContent=`${speaker.tubeSections} tube sections`;
-  message(`VTL WebAssembly · ${response.sampleRate} Hz · ${response.audioDuration.toFixed(2)} s`);
+  message(`VocalTractLab · ${response.sampleRate} Hz · ${response.audioDuration.toFixed(2)} s`);
   draw(0);
  }catch(e){if(seq===requestId){nativeResult=null;acousticSpec=null;constrictionData=[];nativePlayer.clear('VTL synthesis or geometry failed.');$('audio').disabled=true;$('wav').disabled=true;message('Error: '+e.message);}}
  finally{if(seq===requestId)btn.disabled=false;}
@@ -316,7 +324,7 @@ $('scrub').addEventListener('input',()=>{
  draw(t);
 });
 $('run').onclick=()=>{if(speaker)void run()};
-$('model').addEventListener('change',()=>{if(speaker)void run()});$('phrase').addEventListener('change',()=>{if(speaker)void run()});
+$('model').addEventListener('change',()=>{showModelControls();if(speaker)void run()});$('phrase').addEventListener('change',()=>{if(speaker)void run()});
 $('experiment').onclick=()=>{void perturbationExperiment()};
 $('perturbation-csv').onclick=()=>{if(perturbationCsvText)fileDownload('vtl-paired-f1-perturbation.csv',perturbationCsvText,'text/csv')};
 $('sweep-test').onclick=()=>{void runGainSweep()};
@@ -329,4 +337,27 @@ $('balance-test').onclick=()=>{void runBalanceSweep()};
 $('balance-csv').onclick=()=>{if(balanceCsvText)fileDownload('vtl-feedback-feedforward-balance.csv',balanceCsvText,'text/csv')};
 $('authority-csv').onclick=()=>{if(authorityCsvText)fileDownload('vtl-local-f1-sensitivity.csv',authorityCsvText,'text/csv')};
 $('reconnect').onclick=()=>{void connect()};
+$('diva-mode')?.addEventListener('change',()=>{if(speaker&&$('model').value==='diva')void run()});
+$('train-diva')?.addEventListener('click',async()=>{
+ const output=$('learning-report'),button=$('train-diva');
+ button.disabled=true;output.textContent='Exploring VTL tract positions and learning inverse sensorimotor maps…';
+ try{
+   const rows=await wasmClient.trainDiva({nTrials:64,seed:17});
+   output.textContent=rows.map(x=>`/${x.phone}/: learned bands ${x.validBands.map(k=>`F${k+1}`).join(', ')||'none'}, ${x.nTrials} usable samples, inverse-fit RMS ${x.rms?.toFixed(3)??'unresolved'}`).join(' | ');
+   if($('model').value==='diva')await run();
+ }catch(error){output.textContent='Learning failed: '+error.message;}
+ finally{button.disabled=false;}
+});
+$('practice-diva')?.addEventListener('click',async()=>{
+ const output=$('learning-report'),button=$('practice-diva');
+ button.disabled=true;output.textContent='Practicing five utterances with feedback-based feedforward updating…';
+ try{
+   const result=await wasmClient.practiceDiva($('phrase').value,config(),{trials:5});
+   output.innerHTML='<table><thead><tr><th>Attempt</th><th>Target error</th><th>Motor effort</th></tr></thead><tbody>'+
+     result.summaries.map(s=>`<tr><td>${s.attempt}</td><td>${s.normalizedTrackingRMS.toFixed(4)}</td><td>${s.effortMean.toFixed(1)}</td></tr>`).join('')+
+     '</tbody></table><p>Practice updates a stored motor-command template from auditory corrections; it is a simplified learning demonstration, not the original DIVA adaptation rule.</p>';
+   if($('model').value==='diva')await run();
+ }catch(error){output.textContent='Practice failed: '+error.message;}
+ finally{button.disabled=false;}
+});
 await connect();

@@ -4,7 +4,9 @@
 import {WasmVTL} from './wasm-runtime.js';
 import {VTLSensoryObserver} from './vtl-sensing.js';
 import {simulate} from '../sim/runner.js';
-let backend=null;
+import {babbleVTL,adaptMotorProgram} from '../cognitive/diva-learning.js';
+let backend=null, learnedDiva=null;
+const motorPrograms=new Map();
 self.onmessage=async event=>{
   const {id,method,args={}}=event.data;
   let stage='received request';
@@ -33,6 +35,27 @@ self.onmessage=async event=>{
       if(!backend)throw new Error('VTL engine not initialized');
       progress('calibrating vowel goals from actual VTL speaker shapes');
       result=new VTLSensoryObserver(backend).calibrationReport();
+    }else if(method==='train-diva'){
+      if(!backend)throw Error('VTL not initialized');
+      progress('babbling: collecting VTL auditory consequences');
+      learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,args.options||{});
+      result=learnedDiva.diagnostics;
+    }else if(method==='practice-diva'){
+      if(!backend)throw Error('VTL not initialized');
+      const key=args.phrase;let memory=motorPrograms.get(key)||null;
+      const trials=Math.min(12,Math.max(1,Number(args.trials||5)));
+      const summaries=[];
+      for(let attempt=0;attempt<trials;attempt++){
+        progress(`practice: attempt ${attempt+1}/${trials}`);
+        const observer=new VTLSensoryObserver(backend);
+        const cfg={...args.cfg,divaMode:'learned',learnedMaps:learnedDiva?.maps,
+          motorMemory:memory};
+        const trial=simulate('diva',args.phrase,backend.speaker(),cfg,s=>observer.at(s));
+        summaries.push({attempt:attempt+1,...trial.metrics});
+        memory=adaptMotorProgram(memory,trial.frames,{learningRate:args.learningRate??.12});
+      }
+      motorPrograms.set(key,memory);
+      result={summaries,nCommands:memory.length,trained:Boolean(learnedDiva)};
     }else if(method==='f1-authority'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('measuring local acoustic sensitivity with real VTL transfer functions');
@@ -40,8 +63,18 @@ self.onmessage=async event=>{
     }else if(method==='simulate'||method==='simulate-only'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('measuring VTL sensory feedback during motor simulation');
+      if(args.model==='diva' && !learnedDiva){
+        progress('learning DIVA inverse maps from VTL exploratory babbling');
+        learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,{nTrials:48});
+      }
       const observer=new VTLSensoryObserver(backend);
-      const sim=simulate(args.model,args.phrase,backend.speaker(),args.cfg,s=>observer.at(s));
+      const cfg={...args.cfg,
+        ...(args.model==='diva'?{
+          divaMode:args.cfg?.divaMode??'learned',
+          learnedMaps:learnedDiva?.maps,
+          motorMemory:args.cfg?.useLearnedProgram?motorPrograms.get(args.phrase):null
+        }:{})};
+      const sim=simulate(args.model,args.phrase,backend.speaker(),cfg,s=>observer.at(s));
       if(method==='simulate-only')result=sim;
       else {
         progress('synthesizing VTL audio and anatomical geometry');
