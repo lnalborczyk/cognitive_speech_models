@@ -82,14 +82,61 @@ export function babbleVTL(observer,backend,{nTrials=64,amplitude=.065,seed=1024,
  * A retained correction to the time-indexed motor program is learned from
  * auditory commands on preceding productions; no change occurs inside a trial.
  */
-export function adaptMotorProgram(previous,frames,{learningRate=.12,limit=8}={}){
+export function adaptMotorProgram(previous,frames,{learningRate=.12,limit=8,retention=1}={}){
   if(!frames?.length)throw Error('Adaptation needs a completed trial');
   const n=frames[0].x.length;
+  if(!Number.isFinite(retention)||retention<0||retention>1)throw Error('retention must be between 0 and 1');
   const program=previous?.map(row=>row.slice()) || Array.from({length:frames.length},()=>Array(n).fill(0));
   for(let i=0;i<frames.length;i++){
     const observed=frames[i].control?.command || Array(n).fill(0);
     if(!program[i])program[i]=Array(n).fill(0);
-    for(let j=0;j<n;j++)program[i][j]=clamp(program[i][j]+learningRate*(observed[j]||0),-limit,limit);
+    for(let j=0;j<n;j++)program[i][j]=clamp(retention*program[i][j]+learningRate*(observed[j]||0),-limit,limit);
   }
   return program;
+}
+
+/** Independent, held-out VTL evaluation of a learned inverse map.
+ * Training samples and held-out configurations must be drawn with different
+ * RNG seeds. We measure whether correction reduces REAL VTL F1 error.
+ * Missing F1 readings are excluded, never imputed.
+ */
+export function evaluateInverseMapVTL(observer,backend,maps,{nTrials=24,amplitude=.055,seed=8911,correctionScale=1}={}){
+  const random=rng(seed),results=[];
+  const names=backend.tract.names;
+  const movable=names.map((name,i)=>({name,i})).filter(({name})=>
+    ['JA','TCX','TCY','TTX','TTY','LD','LP'].includes(name)).map(x=>x.i);
+  for(const phone of ['a','i','u']){
+    const ref=backend.shapes[phone],map=maps?.[phone];
+    if(!ref||!map){results.push({phone,valid:0,attempted:0,meanAbsErrorBeforeHz:null,
+      meanAbsErrorAfterHz:null,improvedFraction:null});continue;}
+    const refF1=observer.formants(ref)[0];let valid=0,improved=0,before=0,after=0;
+    for(let i=0;i<nTrials;i++){
+      const x=ref.slice();
+      for(const j of movable)x[j]=clamp(x[j]+amplitude*(random()*2-1),0,1);
+      const f=observer.formants(x,[refF1,null,null])[0];
+      if(!Number.isFinite(refF1)||!Number.isFinite(f)||!map.validBands?.includes(0))continue;
+      const change=predictCorrection(map,[f-refF1,null,null],x.length);
+      const corrected=x.map((v,j)=>clamp(v+correctionScale*change[j],0,1));
+      const newF1=observer.formants(corrected,[refF1,null,null])[0];
+      if(!Number.isFinite(newF1))continue;
+      const oldErr=Math.abs(f-refF1),newErr=Math.abs(newF1-refF1);
+      valid++;before+=oldErr;after+=newErr;
+      if(newErr<oldErr)improved++;
+    }
+    results.push({phone,attempted:nTrials,valid,
+      meanAbsErrorBeforeHz:valid?before/valid:null,
+      meanAbsErrorAfterHz:valid?after/valid:null,
+      improvedFraction:valid?improved/valid:null,
+      heldoutSeed:seed,correctionScale});
+  }
+  return results;
+}
+/** Norm of persistent motor-command memory, for monitoring washout.
+ * A declining norm by itself is not evidence of human-like adaptation.
+ */
+export function motorProgramRms(program){
+  if(!program?.length)return 0;
+  let sum=0,count=0;
+  for(const row of program)for(const v of row){sum+=v*v;count++;}
+  return count?Math.sqrt(sum/count):0;
 }

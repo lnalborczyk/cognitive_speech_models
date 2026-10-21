@@ -1,21 +1,45 @@
-# Release v1.6.0 — Model-oriented control mechanisms
+# Release v1.7.0 — Closure/release and learning generalization
 
-DIVA and Task Dynamics remain the only two public controllers. They now have
-more distinct mechanisms connected to a shared VocalTractLab WebAssembly engine.
+The user interface remains limited to DIVA and Task Dynamics and uses the
+same VocalTractLab WebAssembly engine.
 
-- DIVA: automatically fitted VTL babbling-based local auditory inverse maps,
-  auditory goal regions, and optional explicit practice updating feedforward
-  motor programs. Retains the numerical Jacobian as a comparison mode.
-- Task Dynamics: independent tract gestures and numerical VTL tube-task
-  Jacobians; critically damped task-space targets with damped pseudoinverse;
-  reduced coupling graph controls relative gesture timing.
-- External reference timeseries comparison helper, without claiming any
-  embedded TADA/DIVA reference trajectories.
-- Model-specific sliders; research/learning controls remain collapsed.
-- Public README maintains CognitiveHands attribution and describes limitations.
+## Task Dynamics
 
-**Scientific qualification:** Neither controller is an exact reproduction of
-published DIVA or Task Dynamics/TADA, nor are the tube-based constriction
-variables identical to TADA's geometric constriction distances. Actual VTL
-WebAssembly synthesis, audio quality and motor stability require GitHub Actions
-integration after deployment; source-level tests alone are insufficient.
+- Independent stop-constriction tasks receive greater priority over a
+  simultaneous vowel goal on the **same** tract variable. Independent vowel
+  tasks remain active.
+- Stop gestures have a separate (configurable) task-attractor speed and
+  acceleration limit. Vowel gestures are unchanged.
+- The real-VTL browser benchmark evaluates /apa/, /ata/, and /aka/ with both
+  low versus high closure-target priority and the faster closure setting, measuring closure AND release.
+- These changes are hypotheses about improved closure control. Successful
+  closure/release is not claimed before real VTL testing.
+
+## DIVA
+
+- Learned F1 inverse maps are tested on newly sampled articulatory states
+  generated with a seed distinct from training. Missing F1 is reported, not
+  imputed. The test evaluates actual VTL F1 before/after corrections.
+- A separate perturbation-exposure and unperturbed-washout sequence records
+  motor-program magnitude, aftereffects, target tracking and effort per trial.
+- Default washout uses retention 1.0: no arbitrary passive forgetting is
+  introduced. The optional retention parameter can test explicit forgetting.
+- Model learning remains a local ridge-regression and motor-template
+  approximation, not the original DIVA neural learning rules.
+
+## Deployment and documentation
+
+- New workflow: **Validate v1.7 model fidelity**. It runs against the
+  published app in Chromium after the Pages workflow succeeds.
+- Raw CSVs, error logs and scientific outcomes are saved as GitHub Actions
+  artifacts, whether or not closure/generalization improves.
+- The README retains prominent attribution to
+  [CognitiveHands](https://github.com/CrumpLabSandbox/CognitiveHands).
+
+## Verification boundaries
+
+Local JS and Python unit tests assess code paths and API contracts. They do
+not validate acoustic, biomechanical or behavioral fidelity. The actual
+WebAssembly integration and predicted improvement require the post-deploy
+browser workflow, and scientific benchmarking against independent reference
+trajectories remains outstanding.

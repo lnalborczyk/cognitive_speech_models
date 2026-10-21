@@ -86,12 +86,12 @@ export class VTLSensoryObserver {
   /** Measured tract-variable values and numerical Jacobian in VTL speaker units.
    * The task targets are separate/overlapping gesture activations, NOT the
    * controller's already blended global articulatory target. */
-  taskMeasurement(x,score,t){
+  taskMeasurement(x,score,t,{stopPriority=8}={}){
     const targets=this.taskShapeTargets(score);
     const measure=state=>{const tube=this.area(state);
       return tubeTractVariables(tube.areas,tube.lengths);};
     const {values,jacobians}=taskJacobianFromVTL(measure,x,this.backend.tract.names);
-    const scoreGoals=scoreTaskGoals(score,t,targets);
+    const scoreGoals=scoreTaskGoals(score,t,targets,{stopPriority});
     return {values,jacobians,...scoreGoals,source:'VTL tube geometry',
       units:{LA:'cm equivalent diameter',TTCD:'cm equivalent diameter',TBCD:'cm equivalent diameter',TTCL:'cm',TBCL:'cm'}};
   }
@@ -209,7 +209,7 @@ export class VTLSensoryObserver {
     const observerUpdate=!this.cached||step%this.intervalSteps===0||phone!==this.lastPhone;
     if(observerUpdate){
       this.cached=this.measure(x,target,phone,context,{sensorySafety:cfg.sensorySafety!==false});
-      if(model==='td' && score)this.cached.taskGeometry=this.taskMeasurement(x,score,t??step*.005);
+      if(model==='td' && score)this.cached.taskGeometry=this.taskMeasurement(x,score,t??step*.005,{stopPriority:cfg.taskStopPriority??8});
       this.lastPhone=phone;
       this.lastMeasurementTime_s=step*.005;
     }
@@ -217,7 +217,7 @@ export class VTLSensoryObserver {
     // geometry/Jacobian measurements are updated at the observer cadence.
     const sampled=this.cached;
     const taskGeometry=model==='td' && score && sampled.taskGeometry
-      ?{...sampled.taskGeometry,...scoreTaskGoals(score,t??step*.005,this.calibratedTaskShapes)}
+      ?{...sampled.taskGeometry,...scoreTaskGoals(score,t??step*.005,this.calibratedTaskShapes,{stopPriority:cfg.taskStopPriority??8})}
       :sampled.taskGeometry;
     return {...sampled,taskGeometry,time_s:step*.005,
       measuredAt_s:this.lastMeasurementTime_s,observerUpdate};

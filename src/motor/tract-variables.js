@@ -46,8 +46,11 @@ export function tubeTractVariables(areas,lengths,{temperature=.35}={}){
  * TTCD/TTCL, and velars TBCD/TBCL; adjacent vowel body and lip tasks remain
  * independently active, instead of imposing an averaged global vocal shape.
  */
-export function scoreTaskGoals(score,t,shapeTasks){
-  const out={},weights={},active=[];
+export function scoreTaskGoals(score,t,shapeTasks,{stopPriority=8}={}){
+  const out={},weights={},stopWeights={},active=[];
+  // A closure gesture must not be diluted by the simultaneous vowel target
+  // for the SAME tract variable. Other vowel tasks remain fully independent.
+  // The priority factor is a tunable reduced-order approximation, not TADA.
   for(const g of score.gestures){
     const dist=Math.abs(t-g.center),plateau=g.kind==='stop'?g.width*.36:0;
     const weight=dist<=plateau?1:dist<g.width ? .5*(1+Math.cos(Math.PI*(dist-plateau)/(g.width-plateau))) : 0;
@@ -60,14 +63,21 @@ export function scoreTaskGoals(score,t,shapeTasks){
       :['LA','TBCD','TBCL'];
     for(const task of tasks){
       if(!finite(targets[task]))continue;
-      out[task]=(out[task]||0)+weight*targets[task];
-      weights[task]=(weights[task]||0)+weight;
+      // Stop weight takes precedence near peak constriction. We retain a
+      // gradual weighting on approach/release to prevent discontinuous goals.
+      const effective=weight*(g.kind==='stop'?stopPriority:1);
+      out[task]=(out[task]||0)+effective*targets[task];
+      weights[task]=(weights[task]||0)+effective;
+      if(g.kind==='stop')stopWeights[task]=(stopWeights[task]||0)+effective;
     }
     active.push({phone:g.phone,weight,kind:g.kind});
   }
-  const goals={};
-  for(const task of Object.keys(out))goals[task]=out[task]/weights[task];
-  return {goals,weights,active};
+  const goals={},closureWeights={};
+  for(const task of Object.keys(out)){
+    goals[task]=out[task]/weights[task];
+    closureWeights[task]=(stopWeights[task]||0)/weights[task];
+  }
+  return {goals,weights,stopWeights:closureWeights,active};
 }
 export function taskJacobianFromVTL(measure,x,names,{delta=.012}={}){
   const baseline=measure(x),jacobians={};

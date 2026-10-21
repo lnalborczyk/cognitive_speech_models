@@ -55,7 +55,8 @@ export class BrowserVTLClient {
   request(method,args={}){
     this.ensureWorker();
     const id=++this.nextId;
-    const timeout=method==='init'?this.initTimeoutMs:this.synthesisTimeoutMs;
+    const timeout=method==='init'?this.initTimeoutMs:
+      (method==='diva-washout'?Math.max(900000,this.synthesisTimeoutMs):this.synthesisTimeoutMs);
     return new Promise((resolve,reject)=>{
       const task={resolve,reject,method,phase:'worker request sent',timer:null};
       this.pending.set(id,task);
@@ -68,6 +69,8 @@ export class BrowserVTLClient {
   }
   init(){return this.request('init');}
   calibrate(){return this.request('calibrate');}
+  evaluateDivaMap(options){return this.request('evaluate-diva-map',{options});}
+  divaWashout(phrase,cfg,options={}){return this.request('diva-washout',{phrase,cfg,...options});}
   f1Authority(){return this.request('f1-authority');}
   trainDiva(options){return this.request('train-diva',{options});}
   practiceDiva(phrase,cfg,{trials=5,learningRate=.12}={}){return this.request('practice-diva',{phrase,cfg,trials,learningRate});}

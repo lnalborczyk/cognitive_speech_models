@@ -15,7 +15,8 @@ export function solveLinear(A,b){
  return m.map(row=>row[n]);
 }
 export function taskSpaceCommand({x,v,target,sensory,rate=1,stiffness=1,neutral=null,
-                                    taskOmega=5.5,taskDamping=1,regularization=.08}){
+                                    taskOmega=5.5,taskDamping=1,regularization=.08,
+                                    stopOmega=18,taskAccelerationLimit=115}){
  const d=sensory?.taskGeometry,n=x.length;
  if(!d?.values||!d.goals||!d.jacobians)return Array(n).fill(0);
  const keys=Object.keys(d.goals).filter(k=>Number.isFinite(d.values[k])&&Array.isArray(d.jacobians[k]));
@@ -24,8 +25,13 @@ export function taskSpaceCommand({x,v,target,sensory,rate=1,stiffness=1,neutral=
  const omega=taskOmega*rate;
  const errors=keys.map((k,i)=>{
   const velocity=dot(J[i],v);
-  const acc=omega*omega*(d.goals[k]-d.values[k])-2*taskDamping*omega*velocity;
-  return Math.max(-22,Math.min(22,acc));
+  const priority=Math.min(1,Math.max(0,d.stopWeights?.[k]||0));
+  // Stiffer closure-specific task attractors. The high-rate onset is
+  // restricted to closure gestures, leaving vowel gestures unchanged.
+  const localOmega=omega*(1-priority)+stopOmega*rate*priority;
+  const acc=localOmega*localOmega*(d.goals[k]-d.values[k])-2*taskDamping*localOmega*velocity;
+  const limit=22*(1-priority)+taskAccelerationLimit*priority;
+  return Math.max(-limit,Math.min(limit,acc));
  });
  // Damped pseudoinverse: J^T (J J^T + lambda I)^-1 a_task.
  const gram=J.map((row,i)=>J.map((r,j)=>dot(row,r)+(i===j?regularization:0)));

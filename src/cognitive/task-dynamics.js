@@ -17,7 +17,9 @@ export class TaskDynamics {
       const u=taskSpaceCommand({x:s.x,v:s.v,target:s.target,sensory:s.sensory,
         rate:this.cfg.rate??1,stiffness:this.cfg.stiffness??1,
         neutral:s.speaker.neutral,taskOmega:this.cfg.taskOmega??5.5,
-        regularization:this.cfg.taskRegularization??.08});
+        regularization:this.cfg.taskRegularization??.08,
+        stopOmega:this.cfg.taskStopOmega??18,
+        taskAccelerationLimit:this.cfg.taskStopAccelerationLimit??115});
       return {u,planning:s.weights.slice(),selected:s.selected,
         details:'Overlapping gestures, VTL-derived tract tasks, critically damped task dynamics'};
     }

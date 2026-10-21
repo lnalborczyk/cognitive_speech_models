@@ -4,7 +4,7 @@
 import {WasmVTL} from './wasm-runtime.js';
 import {VTLSensoryObserver} from './vtl-sensing.js';
 import {simulate} from '../sim/runner.js';
-import {babbleVTL,adaptMotorProgram} from '../cognitive/diva-learning.js';
+import {babbleVTL,adaptMotorProgram,evaluateInverseMapVTL,motorProgramRms} from '../cognitive/diva-learning.js';
 let backend=null, learnedDiva=null;
 const motorPrograms=new Map();
 self.onmessage=async event=>{
@@ -56,6 +56,51 @@ self.onmessage=async event=>{
       }
       motorPrograms.set(key,memory);
       result={summaries,nCommands:memory.length,trained:Boolean(learnedDiva)};
+    }else if(method==='evaluate-diva-map'){
+      if(!backend)throw Error('VTL not initialized');
+      if(!learnedDiva)learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,{nTrials:64});
+      progress('measuring held-out babbling states using VTL transfer functions');
+      result=evaluateInverseMapVTL(new VTLSensoryObserver(backend),backend,
+        learnedDiva.maps,args.options||{});
+    }else if(method==='diva-washout'){
+      if(!backend)throw Error('VTL not initialized');
+      if(!learnedDiva)learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,{nTrials:64});
+      const phrase=args.phrase||'ahold';
+      const cfg={rate:.6,noise:0,feedback:.2,delay:40,perturbationOnsetMs:450,
+        useLearnedProgram:true,sensorySafety:true,...args.cfg};
+      const exposure=Math.max(1,Math.min(12,Number(args.exposureTrials??5)));
+      const washout=Math.max(1,Math.min(12,Number(args.washoutTrials??8)));
+      const learningRate=Number(args.learningRate??.12);
+      const retention=Number(args.washoutRetention??1);
+      let memory=null;
+      const run=(shift,feedback)=>{
+        const observer=new VTLSensoryObserver(backend);
+        return simulate('diva',phrase,backend.speaker(),{
+          ...cfg,perturbation:shift,feedback,divaMode:'learned',
+          learnedMaps:learnedDiva?.maps,motorMemory:memory
+        },s=>observer.at(s));
+      };
+      const probe=()=>{
+        const sim=run(0,0);
+        const samples=sim.frames.filter(f=>f.t>=.85&&f.t<=1.75&&f.sensory?.observerUpdate)
+          .map(f=>f.sensory?.auditory?.[0]).filter(Number.isFinite);
+        return {probeF1_Hz:samples.length?samples.reduce((a,b)=>a+b,0)/samples.length:null,
+          probeValidSamples:samples.length,probeTrackingRMS:sim.metrics.normalizedTrackingRMS};
+      };
+      const records=[{phase:'baseline',trial:0,memoryRms:0,...probe()}];
+      for(const [phase,number,shift] of [['exposure',exposure,Number(args.shiftHz??150)],['washout',washout,0]]){
+        for(let i=1;i<=number;i++){
+          progress(`${phase} trial ${i}/${number}`);
+          const sim=run(shift,cfg.feedback);
+          memory=adaptMotorProgram(memory,sim.frames,{learningRate,
+            retention:phase==='washout'?retention:1});
+          records.push({phase,trial:i,shiftHz:shift,memoryRms:motorProgramRms(memory),
+            trackingRMS:sim.metrics.normalizedTrackingRMS,
+            effort:sim.metrics.effortMean,...probe()});
+        }
+      }
+      result={phrase,exposureTrials:exposure,washoutTrials:washout,
+        washoutRetention:retention,records};
     }else if(method==='f1-authority'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('measuring local acoustic sensitivity with real VTL transfer functions');
