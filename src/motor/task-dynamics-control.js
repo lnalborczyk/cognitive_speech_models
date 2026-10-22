@@ -16,7 +16,8 @@ export function solveLinear(A,b){
 }
 export function taskSpaceCommand({x,v,target,sensory,rate=1,stiffness=1,neutral=null,
                                     taskOmega=5.5,taskDamping=1,regularization=.08,
-                                    stopOmega=18,taskAccelerationLimit=115}){
+                                    stopOmega=18,taskAccelerationLimit=115,
+                                    referenceAttraction=65}){
  const d=sensory?.taskGeometry,n=x.length;
  if(!d?.values||!d.goals||!d.jacobians)return Array(n).fill(0);
  const keys=Object.keys(d.goals).filter(k=>Number.isFinite(d.values[k])&&Array.isArray(d.jacobians[k]));
@@ -34,13 +35,28 @@ export function taskSpaceCommand({x,v,target,sensory,rate=1,stiffness=1,neutral=
   return Math.max(-limit,Math.min(limit,acc));
  });
  // Damped pseudoinverse: J^T (J J^T + lambda I)^-1 a_task.
- const gram=J.map((row,i)=>J.map((r,j)=>dot(row,r)+(i===j?regularization:0)));
- const alpha=solveLinear(gram,errors);
- const command=Array.from({length:n},(_,j)=>J.reduce((s,row,i)=>s+row[j]*alpha[i],0));
+ // Prefer anatomically calibrated site aperture over broad overlapping
+ // tongue regions when their objectives compete. Normalized row weights
+ // make this an explicit weighted damped least-squares problem.
+ const weights=keys.map(k=>k==='SCD'?6:1);
+ const WJ=J.map((row,i)=>row.map(v=>v*Math.sqrt(weights[i])));
+ const wa=errors.map((v,i)=>v*Math.sqrt(weights[i]));
+ const gram=WJ.map((row,i)=>WJ.map((r,j)=>dot(row,r)+(i===j?regularization:0)));
+ const alpha=solveLinear(gram,wa);
+ const command=Array.from({length:n},(_,j)=>WJ.reduce((sum,row,i)=>sum+row[j]*alpha[i],0));
  // Convert desired articulator acceleration to the shared plant's command
  // units, explicitly compensating for the known shared plant damping/rest term.
  // Gentle articulator regularization avoids uncontrolled null-space drift.
- return command.map((u,j)=>Math.max(-75,Math.min(75,u+3.4*v[j]+
-   1.9*stiffness*(x[j]-(neutral?.[j]??.5)) +
-   3*(target[j]-x[j])-.8*v[j])));
+ const reference=d.closureReference;
+ const activity=Math.max(0,Math.min(1,d.closureActivity||0));
+ return command.map((u,j)=>{
+   // Feasible speaker-shape reference is a secondary articulator goal.
+   // It improves conditioning when the aperture Jacobian is nearly flat.
+   // This is an actuator COMMAND, not a forced position overwrite.
+   const guide=reference&&Number.isFinite(reference[j])
+     ?referenceAttraction*activity*(reference[j]-x[j]):0;
+   return Math.max(-75,Math.min(75,u+guide+3.4*v[j]+
+     1.9*stiffness*(x[j]-(neutral?.[j]??.5)) +
+     3*(target[j]-x[j])-.8*v[j]));
+ });
 }

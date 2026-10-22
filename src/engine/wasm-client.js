@@ -71,6 +71,7 @@ export class BrowserVTLClient {
   calibrate(){return this.request('calibrate');}
   evaluateDivaMap(options){return this.request('evaluate-diva-map',{options});}
   divaWashout(phrase,cfg,options={}){return this.request('diva-washout',{phrase,cfg,...options});}
+  calibrateStops(options={}){return this.request('calibrate-stops',{options});}
   f1Authority(){return this.request('f1-authority');}
   trainDiva(options){return this.request('train-diva',{options});}
   practiceDiva(phrase,cfg,{trials=5,learningRate=.12}={}){return this.request('practice-diva',{phrase,cfg,trials,learningRate});}

@@ -96,3 +96,18 @@ export function taskJacobianFromVTL(measure,x,names,{delta=.012}={}){
   }
   return {values:baseline,jacobians};
 }
+
+/** Identify the reference stop constriction active at a given instant.
+ * The site itself is measured from that speaker's real VTL closure shape.
+ */
+export function activeStopGesture(score,t){
+  let winner=null;
+  for(const g of score?.gestures||[]){
+    if(g.kind!=='stop')continue;
+    const dist=Math.abs(t-g.center),plateau=g.width*.36;
+    const a=dist<=plateau?1:dist<g.width
+      ?.5*(1+Math.cos(Math.PI*(dist-plateau)/(g.width-plateau))):0;
+    if(a>1e-4 && (!winner||a>winner.activation))winner={gesture:g,activation:a};
+  }
+  return winner;
+}

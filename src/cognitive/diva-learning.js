@@ -140,3 +140,69 @@ export function motorProgramRms(program){
   for(const row of program)for(const v of row){sum+=v*v;count++;}
   return count?Math.sqrt(sum/count):0;
 }
+
+/** Update a time-aligned feedforward command from a PHYSICAL F1 error.
+ *
+ * The reference is a matched, unperturbed VTL production with no learned
+ * memory. Exposure error is produced F1 + heard perturbation - reference F1.
+ * During washout the shift is zero: an acoustically ineffective stored
+ * command receives no update, while a measurable aftereffect can drive a
+ * reversal. This does not impose exponential forgetting or invent formants.
+ *
+ * DIVA-inspired error-based learning, not the official neural learning rule.
+ */
+export function adaptFromAcousticError(previous,frames,referenceFrames,inverseMap,{
+  shiftHz=0,onset_s=.45,learningRate=.12,commandGain=180,
+  targetRegionHz=0,commandLimit=8,maxErrorHz=250,
+}={}){
+  if(!frames?.length||frames.length!==referenceFrames?.length)
+    throw Error('Learning requires time-aligned actual and unperturbed reference frames');
+  const n=frames[0].x.length;
+  const memory=previous?.map(row=>row.slice()) ||
+    Array.from({length:frames.length},()=>Array(n).fill(0));
+  if(memory.length!==frames.length || memory.some(row=>row.length!==n))
+    throw Error('Motor memory dimension does not match the simulation');
+  const mapFor=phone=>inverseMap?.validBands?inverseMap:inverseMap?.[phone];
+  const someLearnedF1=frames.some(f=>mapFor(f.phone)?.validBands?.includes(0));
+  if(!someLearnedF1)return {memory,diagnostic:{status:'no_learned_F1',valid:0,
+    meanErrorHz:null,meanAppliedErrorHz:null,commandIncrementRms:0}};
+  const samples=[];
+  for(let i=0;i<frames.length;i++){
+    const f=frames[i],ref=referenceFrames[i];
+    if(f.t<onset_s+.025||f.t>frames.at(-1).t-.15||!f.sensory?.observerUpdate)continue;
+    const map=mapFor(f.phone);
+    if(!map?.validBands?.includes(0))continue;
+    const observed=f.sensory.auditory?.[0],baseline=ref.sensory?.auditory?.[0];
+    if(!Number.isFinite(observed)||!Number.isFinite(baseline))continue;
+    const errorHz=observed+shiftHz-baseline;
+    if(!Number.isFinite(errorHz)||Math.abs(errorHz)>maxErrorHz)continue;
+    const appliedHz=Math.sign(errorHz)*Math.max(0,Math.abs(errorHz)-targetRegionHz);
+    const correction=predictCorrection(map,[appliedHz,null,null],n)
+      .map(v=>Math.max(-commandLimit,Math.min(commandLimit,learningRate*commandGain*v)));
+    samples.push({time_s:f.t,phone:f.phone,errorHz,appliedHz,correction});
+  }
+  if(!samples.length)return {memory,diagnostic:{status:'unresolved_F1',valid:0,
+    meanErrorHz:null,meanAppliedErrorHz:null,commandIncrementRms:0}};
+  // Motor-program learning is time-indexed. A valid observer measurement drives
+  // only the nearby segment of the matching speech gesture, rather than
+  // applying one global error to every vowel in the entire utterance.
+  let current=null,nextSample=0,incrementSq=0,incrementCount=0;
+  for(let i=0;i<frames.length;i++){
+    const f=frames[i];
+    while(nextSample<samples.length&&samples[nextSample].time_s<=f.t+1e-9)
+      current=samples[nextSample++];
+    if(!current||f.t-current.time_s>.075||f.phone!==current.phone)continue;
+    const fade=Math.min(1,Math.max(0,(f.t-onset_s)/.08));
+    for(let j=0;j<n;j++){
+      const increment=current.correction[j]*fade;
+      memory[i][j]=clamp(memory[i][j]+increment,-commandLimit,commandLimit);
+      incrementSq+=increment*increment;incrementCount++;
+    }
+  }
+  const meanErrorHz=samples.reduce((s,x)=>s+x.errorHz,0)/samples.length;
+  const meanAppliedErrorHz=samples.reduce((s,x)=>s+x.appliedHz,0)/samples.length;
+  return {memory,diagnostic:{status:'updated',valid:samples.length,meanErrorHz,
+    meanAppliedErrorHz,commandIncrementRms:incrementCount?Math.sqrt(incrementSq/incrementCount):0,
+    firstSample_s:samples[0].time_s,lastSample_s:samples.at(-1).time_s,
+    shiftHz,reference:'matched unperturbed VTL baseline'}};
+}

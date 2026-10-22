@@ -14,15 +14,19 @@ For more parameters, open **Advanced motor and feedback controls**. To reproduce
 
 ### Implemented controllers
 
-- **DIVA-inspired:** speech-sound-specific auditory goal regions, delayed sensory error corrections, and a local inverse map **learned from exploratory VTL articulatory movements** (an explicit *babbling approximation*). The research tools also illustrate updating feedforward motor-command templates across repeated trials. The learned map is local ridge regression and is now evaluated on held-out VTL states; **it is not the neural architecture of the published DIVA model**. A numerical-Jacobian mapping remains available as a control comparison.
+- **DIVA-inspired:** speech-sound-specific auditory goal regions, delayed sensory error corrections, and a local inverse map **learned from exploratory VTL articulatory movements** (an explicit *babbling approximation*). The research tools also illustrate updating feedforward motor-command templates from VTL-measured acoustic prediction errors across repeated trials. The learned map is local ridge regression and is now evaluated on held-out VTL states; **it is not the neural architecture of the published DIVA model**. A numerical-Jacobian mapping remains available as a control comparison.
 - **Task Dynamics-inspired:** independent, overlapping consonant and vowel gestures, a reduced coupled-timing graph, stop-prioritized tract constriction goals, and critically damped task-space attractors. Targets and task Jacobians are computed from VTL tube geometry, with regularized inverse kinematics. **The constriction variables are effective tube apertures and constriction centroids, not the original TADA palate-to-articulator distances or coupled-oscillator network**.
 
 Both use the same normalized actuator and VTL speaker. The underlying vocal-tract geometry and acoustic synthesis come from VTL; the controllers are **research-inspired adaptations, not validated reproductions** of published DIVA or TADA. Training is run locally when the DIVA controller first executes. The VTL transfer function may not resolve every formant (particularly /i/ F1); missing data remain explicitly missing. Training and gestural movement are deterministic for a fixed seed and model configuration.
 
 
-### Controller-fidelity experiments (v1.7)
+### Model-fidelity experiments (v1.8)
 
-The [v1.7 model-fidelity workflow](docs/v17-experiment-protocol.md) uses the real VTL WebAssembly engine to measure stop-closure and release trajectories under different closure dynamics, the DIVA inverse map on independently generated held-out articulatory configurations, and a perturbation–washout learning sequence. It exports trajectories and transparent missing-measurement indicators. Results are **model-diagnostic**, not validations of human speech behavior. The previous [v1.6 protocol](docs/v16-experiment-protocol.md) is retained for reproducibility.
+The [v1.8 validation protocol](docs/v18-experiment-protocol.md) runs real VTL WebAssembly simulations in Chromium and exports reference-closure checks, place-specific stop-closure/release results, and DIVA perturbation–washout trajectories. It specifically tests the failure modes observed in v1.7: poorly localized /p/ and /t/ closures and motor-memory growth without an acoustic washout response.
+
+**Task Dynamics** measures the area at the *speaker's canonical stop-closure site*, uses a site-specific numerical Jacobian, and adds an optional secondary bias toward the corresponding physically realizable VTL reference articulatory state. This is a motor command, not an instantaneous shape replacement. **DIVA practice** now updates its stored motor program from the difference between VTL-measured F1 and a matched unperturbed baseline, including the perceived shift during exposure. In washout, the shift is zero; any reversal must be driven by a measured aftereffect. Both methods remain simplified and have not been validated against empirical speech data.
+
+Earlier [v1.7](docs/v17-experiment-protocol.md) and [v1.6](docs/v16-experiment-protocol.md) workflows remain available for historical comparisons, but run manually rather than automatically on each deployment. This reduces consumption of free GitHub Actions minutes.
 
 ### Validation tools
 
@@ -46,6 +50,7 @@ The [automated VTL feedback-balance validation](docs/feedback-balance-validation
 | `src/cognitive/task-dynamics.js` | Task Dynamics controller |
 | `src/motor/tract-variables.js` | VTL tube constriction variables, independent gestural targets and Jacobians |
 | `src/motor/task-dynamics-control.js` | Second-order task attractors and damped inverse kinematics |
+| `src/motor/closure-ik.js` | Static VTL-geometry reference-closure calibration (diagnostic, not biomechanics) |
 | `src/motor/gestural-oscillators.js` | Reduced gestural coupling / timing optimizer |
 | `src/motor/gestures.js` | Speaker-specific phonetic shapes and gestural overlap |
 | `src/motor/plant.js` | Shared normalized actuator |

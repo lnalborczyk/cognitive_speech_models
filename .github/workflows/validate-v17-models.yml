@@ -13,9 +13,6 @@ on:
         type: choice
         options: ['3', '6', '10']
         default: '6'
-  workflow_run:
-    workflows: ['Build VTL WebAssembly and deploy GitHub Pages']
-    types: [completed]
 
 permissions:
   contents: read

@@ -4,7 +4,7 @@
 import {WasmVTL} from './wasm-runtime.js';
 import {VTLSensoryObserver} from './vtl-sensing.js';
 import {simulate} from '../sim/runner.js';
-import {babbleVTL,adaptMotorProgram,evaluateInverseMapVTL,motorProgramRms} from '../cognitive/diva-learning.js';
+import {babbleVTL,adaptFromAcousticError,evaluateInverseMapVTL,motorProgramRms} from '../cognitive/diva-learning.js';
 let backend=null, learnedDiva=null;
 const motorPrograms=new Map();
 self.onmessage=async event=>{
@@ -42,20 +42,35 @@ self.onmessage=async event=>{
       result=learnedDiva.diagnostics;
     }else if(method==='practice-diva'){
       if(!backend)throw Error('VTL not initialized');
+      if(!learnedDiva)learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,{nTrials:64});
       const key=args.phrase;let memory=motorPrograms.get(key)||null;
       const trials=Math.min(12,Math.max(1,Number(args.trials||5)));
+      const defaultCfg={rate:1,noise:0,feedback:.2,delay:40,
+        perturbation:0,perturbationOnsetMs:450,sensorySafety:true,...args.cfg};
+      const speaker=backend.speaker();
+      const simulateWith=(mem,feedback)=>{
+        const observer=new VTLSensoryObserver(backend);
+        return simulate('diva',args.phrase,speaker,{
+          ...defaultCfg,feedback,divaMode:'learned',learnedMaps:learnedDiva.maps,
+          motorMemory:mem},s=>observer.at(s));
+      };
+      const reference=simulateWith(null,0);
       const summaries=[];
       for(let attempt=0;attempt<trials;attempt++){
         progress(`practice: attempt ${attempt+1}/${trials}`);
-        const observer=new VTLSensoryObserver(backend);
-        const cfg={...args.cfg,divaMode:'learned',learnedMaps:learnedDiva?.maps,
-          motorMemory:memory};
-        const trial=simulate('diva',args.phrase,backend.speaker(),cfg,s=>observer.at(s));
-        summaries.push({attempt:attempt+1,...trial.metrics});
-        memory=adaptMotorProgram(memory,trial.frames,{learningRate:args.learningRate??.12});
+        const trial=simulateWith(memory,defaultCfg.feedback);
+        const updated=adaptFromAcousticError(memory,trial.frames,reference.frames,learnedDiva.maps,{
+          shiftHz:defaultCfg.perturbation,onset_s:defaultCfg.perturbationOnsetMs/1000,
+          learningRate:args.learningRate??.12});
+        memory=updated.memory;
+        summaries.push({attempt:attempt+1,...trial.metrics,
+          learningStatus:updated.diagnostic.status,
+          learningErrorHz:updated.diagnostic.meanErrorHz,
+          learningCommandRms:updated.diagnostic.commandIncrementRms});
       }
       motorPrograms.set(key,memory);
-      result={summaries,nCommands:memory.length,trained:Boolean(learnedDiva)};
+      result={summaries,nCommands:memory.length,trained:Boolean(learnedDiva),
+        learningMechanism:'acoustic error to matched unperturbed baseline'};
     }else if(method==='evaluate-diva-map'){
       if(!backend)throw Error('VTL not initialized');
       if(!learnedDiva)learnedDiva=babbleVTL(new VTLSensoryObserver(backend),backend,{nTrials:64});
@@ -69,9 +84,10 @@ self.onmessage=async event=>{
       const cfg={rate:.6,noise:0,feedback:.2,delay:40,perturbationOnsetMs:450,
         useLearnedProgram:true,sensorySafety:true,...args.cfg};
       const exposure=Math.max(1,Math.min(12,Number(args.exposureTrials??5)));
-      const washout=Math.max(1,Math.min(12,Number(args.washoutTrials??8)));
+      const washout=Math.max(1,Math.min(24,Number(args.washoutTrials??12)));
       const learningRate=Number(args.learningRate??.12);
       const retention=Number(args.washoutRetention??1);
+      if(retention!==1)progress('warning: passive memory decay requested; this is NOT sensory-error washout');
       let memory=null;
       const run=(shift,feedback)=>{
         const observer=new VTLSensoryObserver(backend);
@@ -80,6 +96,8 @@ self.onmessage=async event=>{
           learnedMaps:learnedDiva?.maps,motorMemory:memory
         },s=>observer.at(s));
       };
+      const baseline=run(0,0);
+      const referenceFrames=baseline.frames;
       const probe=()=>{
         const sim=run(0,0);
         const samples=sim.frames.filter(f=>f.t>=.85&&f.t<=1.75&&f.sensory?.observerUpdate)
@@ -87,20 +105,37 @@ self.onmessage=async event=>{
         return {probeF1_Hz:samples.length?samples.reduce((a,b)=>a+b,0)/samples.length:null,
           probeValidSamples:samples.length,probeTrackingRMS:sim.metrics.normalizedTrackingRMS};
       };
-      const records=[{phase:'baseline',trial:0,memoryRms:0,...probe()}];
+      const records=[{phase:'baseline',trial:0,memoryRms:0,
+        learningStatus:'baseline',learningErrorHz:null,learningCommandRms:0,...probe()}];
       for(const [phase,number,shift] of [['exposure',exposure,Number(args.shiftHz??150)],['washout',washout,0]]){
         for(let i=1;i<=number;i++){
           progress(`${phase} trial ${i}/${number}`);
           const sim=run(shift,cfg.feedback);
-          memory=adaptMotorProgram(memory,sim.frames,{learningRate,
-            retention:phase==='washout'?retention:1});
+          const learnt=adaptFromAcousticError(memory,sim.frames,referenceFrames,
+            learnedDiva?.maps,{
+              shiftHz:shift,onset_s:cfg.perturbationOnsetMs/1000,learningRate,
+              commandGain:args.learningCommandGain??180,
+              targetRegionHz:args.learningTargetRegionHz??0,
+            });
+          memory=learnt.memory;
+          if(retention!==1 && phase==='washout')memory=memory.map(row=>row.map(x=>retention*x));
           records.push({phase,trial:i,shiftHz:shift,memoryRms:motorProgramRms(memory),
             trackingRMS:sim.metrics.normalizedTrackingRMS,
-            effort:sim.metrics.effortMean,...probe()});
+            effort:sim.metrics.effortMean,
+            learningStatus:learnt.diagnostic.status,
+            learningValidSamples:learnt.diagnostic.valid,
+            learningErrorHz:learnt.diagnostic.meanErrorHz,
+            learningAppliedErrorHz:learnt.diagnostic.meanAppliedErrorHz,
+            learningCommandRms:learnt.diagnostic.commandIncrementRms,
+            ...probe()});
         }
       }
       result={phrase,exposureTrials:exposure,washoutTrials:washout,
-        washoutRetention:retention,records};
+        washoutRetention:retention,learningMechanism:'acoustic error to matched unperturbed baseline',records};
+    }else if(method==='calibrate-stops'){
+      if(!backend)throw Error('VTL not initialized');
+      progress('checking VTL reference closure sites and local articulatory sensitivity');
+      result=new VTLSensoryObserver(backend).stopCalibrationReport(args.options||{});
     }else if(method==='f1-authority'){
       if(!backend)throw new Error('VTL engine not initialized');
       progress('measuring local acoustic sensitivity with real VTL transfer functions');

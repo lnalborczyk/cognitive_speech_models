@@ -1,0 +1,50 @@
+name: Validate v1.8 model fidelity
+
+on:
+  workflow_dispatch:
+    inputs:
+      exposure_trials:
+        description: 'DIVA perturbation exposure trials'
+        type: choice
+        options: ['3', '5', '8']
+        default: '5'
+      washout_trials:
+        description: 'Unperturbed washout trials (no passive forgetting)'
+        type: choice
+        options: ['6', '12', '20']
+        default: '12'
+  workflow_run:
+    workflows: ['Build VTL WebAssembly and deploy GitHub Pages']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  model-validation:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Chromium
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Measure real VTL closures and learning
+        run: |
+          python3 scripts/validate_v18_models.py \
+            --artifacts artifacts/v18-models \
+            --exposure-trials '${{ inputs.exposure_trials || '5' }}' \
+            --washout-trials '${{ inputs.washout_trials || '12' }}'
+      - name: Upload measured results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtl-v18-model-fidelity
+          path: artifacts/v18-models/
+          if-no-files-found: warn
+          retention-days: 30

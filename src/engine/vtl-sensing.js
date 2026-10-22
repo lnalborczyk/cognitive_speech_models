@@ -1,4 +1,5 @@
-import {tubeTractVariables,taskJacobianFromVTL,scoreTaskGoals} from '../motor/tract-variables.js';
+import {solveStaticClosure} from '../motor/closure-ik.js';
+import {tubeTractVariables,taskJacobianFromVTL,scoreTaskGoals,activeStopGesture} from '../motor/tract-variables.js';
 import {formantsFromSpectrum,lowBandPeakCandidates} from '../motor/sensory-control.js';
 
 /** Online geometry/acoustic observer. All measurements invoke VTL C functions.
@@ -71,6 +72,43 @@ export class VTLSensoryObserver {
     const result={...selected,targetArea:Math.max(0,selected.area),vowelArea:this.area(vowel).areas[selected.index]};
     this.sites.set(key,result);return result;
   }
+  /** Canonical speaker closure benchmark: each requested stop is checked
+   * directly against the actual JD3 closure target, not a guessed target.
+   * Used to distinguish unreachable targets from ill-conditioned IK.
+   */
+  stopCalibrationReport({context='a'}={}){
+    const vowel=this.backend.shapes[context]||this.backend.shapes.a;
+    return ['p','t','k'].map(phone=>{
+      const site=this.site(phone,context);
+      if(!site||!vowel)return {phone,context,status:'missing_reference'};
+      const stop=this.backend.shapes[`${phone}:${context}`]||this.backend.shapes[phone];
+      if(!stop)return {phone,context,status:'missing_reference'};
+      const index=site.index,measure=x=>this.area(x).areas[index];
+      const vowelArea=measure(vowel),referenceArea=measure(stop);
+      const gradients={};
+      for(const name of PARAMS[phone]||[]){
+        const j=this.backend.tract.names.indexOf(name);
+        if(j<0)continue;
+        const hi=vowel.slice(),lo=vowel.slice();
+        hi[j]=Math.min(1,hi[j]+.012);lo[j]=Math.max(0,lo[j]-.012);
+        const width=hi[j]-lo[j];
+        gradients[name]=width>1e-8?(measure(hi)-measure(lo))/width:null;
+      }
+      const gradientNorm=Math.sqrt(Object.values(gradients)
+        .filter(Number.isFinite).reduce((sum,v)=>sum+v*v,0));
+      const indices=(PARAMS[phone]||[]).map(name=>this.backend.tract.names.indexOf(name)).filter(i=>i>=0);
+      const staticIK=solveStaticClosure({start:vowel,reference:stop,
+        measure,indices,maxIterations:25});
+      return {phone,context,status:'measured',sectionIndex:index,
+        locationCm:site.positionCm,vowelArea_cm2:vowelArea,
+        referenceArea_cm2:referenceArea,referenceAchievesClosure:referenceArea<=.08,
+        initialGradientNorm_cm2:gradientNorm,
+        staticIKConverged:staticIK.converged,
+        staticIKFinalArea_cm2:staticIK.finalArea_cm2,
+        staticIKIterations:staticIK.iterations,
+        gradients_cm2_per_unit:gradients};
+    });
+  }
   /** Reference task targets are measured from actual VTL tube sections and
    * cached by speaker shape. No fixed consonant-area values are invented. */
   taskShapeTargets(score){
@@ -83,17 +121,49 @@ export class VTLSensoryObserver {
     }
     return this.calibratedTaskShapes;
   }
-  /** Measured tract-variable values and numerical Jacobian in VTL speaker units.
-   * The task targets are separate/overlapping gesture activations, NOT the
-   * controller's already blended global articulatory target. */
+  /** Stop-specific constriction calibration at the section selected from
+   * the canonical, context-dependent VTL closure shape. Broad tube regions
+   * alone may report the wrong anatomical site (particularly alveolars).
+   */
+  stopReference(gesture){
+    if(!gesture||gesture.kind!=='stop')return null;
+    const site=this.site(gesture.phone,gesture.context);
+    if(!site)return null;
+    return {site,source:gesture.source,parameters:gesture.target.slice(),
+      apertureCm:Math.sqrt(4*Math.max(0,site.targetArea)/Math.PI)};
+  }
+  /** Geometry-based task Jacobian plus a separate place-specific closure
+   * coordinate. The target is feasible by construction (a speaker shape),
+   * but the inverse transform may still fail to reach it dynamically.
+   */
   taskMeasurement(x,score,t,{stopPriority=8}={}){
     const targets=this.taskShapeTargets(score);
-    const measure=state=>{const tube=this.area(state);
-      return tubeTractVariables(tube.areas,tube.lengths);};
+    const active=activeStopGesture(score,t);
+    const reference=active?this.stopReference(active.gesture):null;
+    const measure=state=>{
+      const tube=this.area(state);
+      const values=tubeTractVariables(tube.areas,tube.lengths);
+      if(reference){
+        const area=tube.areas[reference.site.index];
+        values.SCD=Math.sqrt(4*Math.max(0,area)/Math.PI);
+      }
+      return values;
+    };
     const {values,jacobians}=taskJacobianFromVTL(measure,x,this.backend.tract.names);
-    const scoreGoals=scoreTaskGoals(score,t,targets,{stopPriority});
-    return {values,jacobians,...scoreGoals,source:'VTL tube geometry',
-      units:{LA:'cm equivalent diameter',TTCD:'cm equivalent diameter',TBCD:'cm equivalent diameter',TTCL:'cm',TBCL:'cm'}};
+    const goals=scoreTaskGoals(score,t,targets,{stopPriority});
+    if(reference){
+      goals.goals.SCD=reference.apertureCm;
+      goals.stopWeights.SCD=active.activation;
+    }
+    return {values,jacobians,...goals,
+      closureReference:reference?.parameters??null,
+      closurePhone:active?.gesture.phone??null,
+      closureSource:reference?.source??null,
+      closureActivity:active?.activation??0,
+      closureSite:reference?.site??null,
+      source:'VTL tube geometry + reference-site aperture',
+      units:{LA:'cm equivalent diameter',TTCD:'cm equivalent diameter',TBCD:'cm equivalent diameter',
+        TTCL:'cm',TBCL:'cm',SCD:'cm equivalent diameter at speaker stop site'}};
   }
   /** F1–F3 of the actual VTL speaker's canonical vowel tract shapes.
    * These are model-specific acoustic goals, not generic human formant tables.
@@ -216,9 +286,26 @@ export class VTLSensoryObserver {
     // Planning targets evolve every motor time step, whereas expensive VTL
     // geometry/Jacobian measurements are updated at the observer cadence.
     const sampled=this.cached;
-    const taskGeometry=model==='td' && score && sampled.taskGeometry
-      ?{...sampled.taskGeometry,...scoreTaskGoals(score,t??step*.005,this.calibratedTaskShapes,{stopPriority:cfg.taskStopPriority??8})}
-      :sampled.taskGeometry;
+    let taskGeometry=sampled.taskGeometry;
+    if(model==='td' && score && taskGeometry){
+      const now=t??step*.005;
+      const targets=scoreTaskGoals(score,now,this.calibratedTaskShapes,{stopPriority:cfg.taskStopPriority??8});
+      const active=activeStopGesture(score,now);
+      const sameClosure=active && active.gesture.source===taskGeometry.closureSource;
+      if(sameClosure){
+        targets.goals.SCD=taskGeometry.closureSite
+          ?Math.sqrt(4*Math.max(0,taskGeometry.closureSite.targetArea)/Math.PI):null;
+        targets.stopWeights.SCD=active.activation;
+      }else{
+        // Drop a stale closure task immediately after the gesture releases.
+        const {SCD:_value,...values}=taskGeometry.values;
+        const {SCD:_row,...jacobians}=taskGeometry.jacobians;
+        taskGeometry={...taskGeometry,values,jacobians,closureReference:null,
+          closureActivity:0,closurePhone:null,closureSource:null};
+      }
+      taskGeometry={...taskGeometry,...targets,
+        closureActivity:sameClosure?active.activation:0};
+    }
     return {...sampled,taskGeometry,time_s:step*.005,
       measuredAt_s:this.lastMeasurementTime_s,observerUpdate};
   }

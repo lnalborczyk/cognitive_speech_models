@@ -2,9 +2,6 @@ name: Validate VTL feedback/feedforward balance
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ['Build VTL WebAssembly and deploy GitHub Pages']
-    types: [completed]
 
 permissions:
   contents: read

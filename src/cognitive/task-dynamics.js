@@ -19,7 +19,8 @@ export class TaskDynamics {
         neutral:s.speaker.neutral,taskOmega:this.cfg.taskOmega??5.5,
         regularization:this.cfg.taskRegularization??.08,
         stopOmega:this.cfg.taskStopOmega??18,
-        taskAccelerationLimit:this.cfg.taskStopAccelerationLimit??115});
+        taskAccelerationLimit:this.cfg.taskStopAccelerationLimit??115,
+        referenceAttraction:this.cfg.taskReferenceAttraction??65});
       return {u,planning:s.weights.slice(),selected:s.selected,
         details:'Overlapping gestures, VTL-derived tract tasks, critically damped task dynamics'};
     }
